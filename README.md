@@ -81,6 +81,18 @@ One-shot mode (no handoff):
 openlap --no-interactive "Audit this repository and suggest refactors"
 ```
 
+## JavaScript API
+
+```ts
+import lap from 'openlap';
+
+await lap({
+  promptFilePath: './prompt.md',
+  cwd: process.cwd(),
+  showToolOutput: true,
+});
+```
+
 ## Common Flags
 
 - `--model <name>` set model id
@@ -128,6 +140,11 @@ Useful scripts:
 - `npm run dev` run CLI from source (`tsx src/cli.ts`)
 - `npm run typecheck` run TypeScript checks only
 - `npm run web` start website dev server
+
+Git hooks:
+
+- `pre-commit`: runs `npm run check:precommit` (`lint`)
+- `pre-push`: runs `npm run check:prepush` (`test` + `build`)
 
 Release process:
 
