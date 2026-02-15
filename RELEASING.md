@@ -46,9 +46,4 @@ git push origin main --follow-tags
 
 ## Notes
 
-- This repo currently publishes without npm provenance because the source repo is private.
-- If the repository becomes public, switch publish command back to:
-
-```bash
-npm publish --provenance --access public
-```
+- Releases publish with npm provenance from GitHub Actions Trusted Publisher.

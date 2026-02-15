@@ -11,6 +11,8 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/openlap"><img src="https://img.shields.io/npm/v/openlap?style=flat-square" alt="npm version" /></a>
+  <a href="https://github.com/raggle-ai/openlap/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/raggle-ai/openlap/ci.yml?branch=main&style=flat-square" alt="CI status" /></a>
+  <a href="https://github.com/raggle-ai/openlap/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="license" /></a>
 </p>
 
 <p align="center">
