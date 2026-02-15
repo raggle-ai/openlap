@@ -31,24 +31,19 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json && chmod +x dist/cli.js",
     "dev": "tsx src/cli.ts",
-    "example:add-tests": "openlap --file ./example-prompts/add-tests.md",
-    "example:analyze": "openlap --file ./example-prompts/analyze.md",
-    "example:explain": "openlap --file ./example-prompts/explain.md",
-    "example:fix-bugs": "openlap --file ./example-prompts/fix-bugs.md",
-    "example:review": "openlap --file ./example-prompts/review.md",
-    "team:review": "openlap --file ./example-prompts/review.md",
-    "team:explain": "openlap --file ./example-prompts/explain.md",
-    "team:fix": "openlap --file ./example-prompts/fix-bugs.md",
-    "team:review:ci": "openlap --no-interactive --file ./example-prompts/review.md",
-    "team:explain:ci": "openlap --no-interactive --file ./example-prompts/explain.md",
-    "team:fix:ci": "openlap --no-interactive --file ./example-prompts/fix-bugs.md",
-    "web": "npm run web:dev",
-    "web:install": "npm --prefix ./web install",
+    "example:add-tests": "openlap --file ./prompt-templates/add-tests.template.md",
+    "example:analyze": "openlap --file ./prompt-templates/analyze.template.md",
+    "example:explain": "openlap --file ./prompt-templates/explain.template.md",
+    "example:fix-bugs": "openlap --file ./prompt-templates/fix.template.md",
+    "example:review": "openlap --file ./prompt-templates/review.template.md",
+    "test:input": "openlap --file @prompt-templates/explain.template.md --input",
+    "team:review": "openlap --file ./prompt-templates/review.template.md",
+    "team:explain": "openlap --file ./prompt-templates/explain.template.md",
+    "team:fix": "openlap --file ./prompt-templates/fix.template.md",
+    "team:review:ci": "openlap --no-interactive --file ./prompt-templates/review.template.md",
+    "team:explain:ci": "openlap --no-interactive --file ./prompt-templates/explain.template.md",
+    "team:fix:ci": "openlap --no-interactive --file ./prompt-templates/fix.template.md",
     "web:dev": "npm --prefix ./web run dev",
-    "web:build": "npm --prefix ./web run build",
-    "web:preview": "npm --prefix ./web run preview",
-    "web:project:create": "CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID:-6a7efe766f2293634e2147aa85838c87} npx wrangler pages project create openlap --production-branch main",
-    "web:deploy": "npm run web:build && CLOUDFLARE_ACCOUNT_ID=${CLOUDFLARE_ACCOUNT_ID:-6a7efe766f2293634e2147aa85838c87} npx wrangler pages deploy ./web/dist --project-name openlap --commit-dirty=true",
     "start": "node dist/cli.js",
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -72,6 +67,7 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "@openpets/fal": "^1.0.2"
+    "@openpets/fal": "^1.0.2",
+    "@opentui/core": "^0.1.79"
   }
 }

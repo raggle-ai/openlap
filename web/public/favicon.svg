@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">openlap favicon</title>
+  <desc id="desc">Openlap gradient icon with angle mark.</desc>
+  <defs>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff6eb"/>
+      <stop offset="100%" stop-color="#f4debf"/>
+    </linearGradient>
+  </defs>
+  <rect x="6" y="6" width="52" height="52" rx="12" fill="url(#mark)"/>
+  <text x="32" y="41" text-anchor="middle" fill="#784200" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="30" font-weight="700">&gt;</text>
+</svg>

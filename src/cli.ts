@@ -2,7 +2,7 @@
 
 import { stat, readFile } from 'fs/promises';
 import { readFileSync, realpathSync } from 'fs';
-import { dirname, resolve, delimiter } from 'path';
+import { dirname, resolve, delimiter, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { createInterface } from 'readline/promises';
@@ -10,6 +10,7 @@ import { EXAMPLE_QUERIES, formatExamples } from './examples.js';
 import { resolveExampleQuery } from './example.js';
 import { getCompletionScript, isCompletionShell, type CompletionShell } from './completions.js';
 import { composePrompt, runOpencode, runOpencodeProcess, type OpencodeOutputFormat } from './opencode.js';
+import { readInteractivePromptOpenTui, type InteractivePromptContext } from './tui.js';
 
 type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 type ThinkingColor = 'yellow' | 'cyan' | 'magenta' | 'blue' | 'gray';
@@ -339,9 +340,15 @@ async function readStdinIfPiped(): Promise<string | null> {
   });
 }
 
-async function readInteractivePrompt(promptLabel = 'Enter prompt: '): Promise<string | null> {
+async function readInteractivePrompt(promptLabel = 'Enter prompt: ', context?: InteractivePromptContext): Promise<string | null> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     return null;
+  }
+
+  try {
+    return await readInteractivePromptOpenTui(promptLabel, context);
+  } catch {
+    // Fall back to readline when OpenTUI is unavailable.
   }
 
   const rl = createInterface({
@@ -357,6 +364,84 @@ async function readInteractivePrompt(promptLabel = 'Enter prompt: '): Promise<st
   } finally {
     rl.close();
   }
+}
+
+function showStatusLine(message: string): void {
+  process.stderr.write(`[openlap] ${message}\n`);
+}
+
+function colorBeige(text: string): string {
+  if (!process.stderr.isTTY) {
+    return text;
+  }
+  return `\u001b[38;2;232;220;199m${text}\u001b[0m`;
+}
+
+function buildPreviewLines(text: string, maxLines = 2, maxLineChars = 120): string[] {
+  const normalized = text.replace(/\r\n/g, '\n').trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const sourceLines = normalized.split('\n').map(line => line.trim()).filter(Boolean);
+  if (sourceLines.length === 0) {
+    return [];
+  }
+
+  const previewLines = sourceLines.slice(0, maxLines).map(line => {
+    if (line.length <= maxLineChars) {
+      return line;
+    }
+    return `${line.slice(0, Math.max(1, maxLineChars - 3)).trimEnd()}...`;
+  });
+
+  if (sourceLines.length > maxLines && previewLines.length > 0) {
+    const lastIndex = previewLines.length - 1;
+    const last = previewLines[lastIndex];
+    previewLines[lastIndex] = last.endsWith('...') ? last : `${last} ...`;
+  }
+
+  return previewLines;
+}
+
+function toInlinePreview(text: string, maxChars = 140): string {
+  const compact = text.replace(/\s+/g, ' ').trim();
+  if (!compact) {
+    return '(none)';
+  }
+  if (compact.length <= maxChars) {
+    return compact;
+  }
+  return `${compact.slice(0, Math.max(1, maxChars - 3)).trimEnd()}...`;
+}
+
+function showRunInputSummary(loadedPrompt: string, customInput: string): void {
+  const promptLines = buildPreviewLines(loadedPrompt, 2, 120);
+  if (promptLines.length > 0) {
+    showStatusLine('loaded prompt:');
+    for (const line of promptLines) {
+      showStatusLine(`  ${colorBeige(line)}`);
+    }
+  }
+  showStatusLine(`custom input: ${toInlinePreview(customInput, 140)}`);
+}
+
+async function readAdditionalInput(promptLabel = 'Append input: '): Promise<string | null> {
+  if (process.stdin.isTTY && process.stdout.isTTY) {
+    showStatusLine('Waiting for additional input...');
+    const value = await readInteractivePrompt(promptLabel);
+    if (value) {
+      showStatusLine(`Accepted additional input (${value.length} chars).`);
+    }
+    return value;
+  }
+
+  showStatusLine('Reading additional input from stdin...');
+  const value = await readStdinIfPiped();
+  if (value) {
+    showStatusLine(`Accepted additional input (${value.length} chars).`);
+  }
+  return value;
 }
 
 export function appendAdditionalInput(basePrompt: string, additionalInput: string): string {
@@ -411,87 +496,143 @@ function getPackageVersion(): string {
   }
 }
 
+const PROMPT_TEMPLATE_ALIAS_PREFIX = '@prompt-templates/';
+
+function resolvePromptPathAlias(pathValue: string): string {
+  const normalized = pathValue.replaceAll('\\', '/');
+  if (!normalized.startsWith(PROMPT_TEMPLATE_ALIAS_PREFIX)) {
+    return pathValue;
+  }
+
+  const templatePath = normalized.slice(PROMPT_TEMPLATE_ALIAS_PREFIX.length).trim();
+  if (!templatePath || templatePath.includes('..')) {
+    throw new Error('Invalid --file alias: use @prompt-templates/<template-file>.');
+  }
+
+  const cliPath = fileURLToPath(import.meta.url);
+  const packageRoot = resolve(dirname(cliPath), '..');
+  return resolve(packageRoot, 'prompt-templates', templatePath);
+}
+
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   const { action, options } = parsed;
   const hasInitialPromptSource = Boolean(options.promptText || options.promptFilePath);
 
-  if (action === 'help') {
-    process.stdout.write(HELP_TEXT);
-    return;
-  }
-
-  if (action === 'list-examples') {
-    process.stdout.write(`${formatExamples()}\n`);
-    return;
-  }
-
-  if (action === 'version') {
-    process.stdout.write(`${VERSION_TEXT}\n`);
-    return;
-  }
-
-  if (action === 'completions') {
-    if (!parsed.completionShell) {
-      throw new Error('Missing completion shell. Use --completions bash|zsh|fish.');
+    if (action === 'help') {
+      process.stdout.write(HELP_TEXT);
+      return;
     }
-    process.stdout.write(`${getCompletionScript(parsed.completionShell)}\n`);
-    return;
-  }
 
-  if (action === 'doctor') {
-    const exitCode = await runDoctor();
-    process.exitCode = exitCode;
-    return;
-  }
+    if (action === 'list-examples') {
+      process.stdout.write(`${formatExamples()}\n`);
+      return;
+    }
 
-  await ensureDirectoryPath(options.cwd, '--cwd');
+    if (action === 'version') {
+      process.stdout.write(`${VERSION_TEXT}\n`);
+      return;
+    }
 
-  if (!options.promptText && !options.promptFilePath) {
-    const pipedText = await readStdinIfPiped();
-    if (pipedText) {
-      options.promptText = pipedText;
-    } else if (options.useClipboard) {
-      const clipboardText = await readClipboard();
-      if (clipboardText) {
-        options.promptText = clipboardText;
-      } else {
-        process.stderr.write(
-          'Clipboard is empty. Try one of: pass inline prompt text, use --file <path>, or pipe input (for example: echo "review this repo" | openlap).\n',
-        );
-        process.exitCode = 1;
-        return;
+    if (action === 'completions') {
+      if (!parsed.completionShell) {
+        throw new Error('Missing completion shell. Use --completions bash|zsh|fish.');
       }
-    } else {
-      const typedPrompt = await readInteractivePrompt();
-      if (typedPrompt) {
-        options.promptText = typedPrompt;
+      process.stdout.write(`${getCompletionScript(parsed.completionShell)}\n`);
+      return;
+    }
+
+    if (action === 'doctor') {
+      const exitCode = await runDoctor();
+      process.exitCode = exitCode;
+      return;
+    }
+
+    await ensureDirectoryPath(options.cwd, '--cwd');
+
+    if (!options.promptText && !options.promptFilePath) {
+      const pipedText = await readStdinIfPiped();
+      if (pipedText) {
+        options.promptText = pipedText;
+      } else if (options.useClipboard) {
+        const clipboardText = await readClipboard();
+        if (clipboardText) {
+          options.promptText = clipboardText;
+        } else {
+          process.stderr.write(
+            'Clipboard is empty. Try one of: pass inline prompt text, use --file <path>, or pipe input (for example: echo "review this repo" | openlap).\n',
+          );
+          process.exitCode = 1;
+          return;
+        }
       } else {
-        process.stderr.write('No prompt provided. Pass prompt text, use --file, or pipe input.\n');
-        process.exitCode = 1;
-        return;
+        const typedPrompt = await readInteractivePrompt('Enter prompt: ', {
+          mainInputLabel: 'interactive input',
+          systemPrompts: options.instruction ? [options.instruction] : [],
+        });
+        if (typedPrompt) {
+          options.promptText = typedPrompt;
+        } else {
+          process.stderr.write('No prompt provided. Pass prompt text, use --file, or pipe input.\n');
+          process.exitCode = 1;
+          return;
+        }
       }
     }
-  }
 
-  let sessionId: string | null = null;
+    let sessionId: string | null = null;
 
-  if (options.promptFilePath) {
-    const promptPath = resolve(options.promptFilePath);
-    await ensureFilePath(promptPath, '--file');
+    if (options.promptFilePath) {
+      const promptPath = resolve(resolvePromptPathAlias(options.promptFilePath));
+      await ensureFilePath(promptPath, '--file');
 
-    if (options.forceInteractiveInput && hasInitialPromptSource) {
-      const supplementalInput = await readInteractivePrompt('Append input: ');
-      if (!supplementalInput) {
-        process.stderr.write('No additional input provided for --input.\n');
-        process.exitCode = 1;
+      if (options.forceInteractiveInput && hasInitialPromptSource) {
+        const basePrompt = await readFile(promptPath, 'utf-8');
+        const supplementalInput = process.stdin.isTTY && process.stdout.isTTY
+          ? await readInteractivePrompt('Append input: ', {
+              mainInput: basePrompt,
+              mainInputLabel: basename(promptPath),
+              systemPrompts: options.instruction ? [options.instruction] : [],
+            })
+          : await readAdditionalInput('Append input: ');
+        if (!supplementalInput) {
+          process.stderr.write('No additional input provided for --input. Provide it interactively or pipe it via stdin.\n');
+          process.exitCode = 1;
+          return;
+        }
+
+        const fullPrompt = composePrompt(appendAdditionalInput(basePrompt, supplementalInput), options.instruction);
+        showRunInputSummary(basePrompt, supplementalInput);
+        showStatusLine('Starting OpenCode run');
+        const output = await runOpencodeProcess({
+          promptText: fullPrompt,
+          cwd: options.cwd,
+          model: options.model,
+          format: options.outputFormat,
+          formatJson: options.formatJson,
+          prettyEvents: options.prettyEvents,
+          showToolOutput: options.showToolOutput,
+          printLogs: options.printLogs,
+          logLevel: options.logLevel,
+          streamOutput: options.streamOutput,
+          thinkingModels: options.thinkingModels,
+          thinkingColor: options.thinkingColor,
+          onSessionId: value => {
+            sessionId = value;
+          },
+        });
+
+        if (!options.streamOutput && output.trim()) {
+          process.stdout.write(`${output}\n`);
+        }
+
+        await maybeLaunchInteractive(options, sessionId);
         return;
       }
 
-      const basePrompt = await readFile(promptPath, 'utf-8');
-      const fullPrompt = composePrompt(appendAdditionalInput(basePrompt, supplementalInput), options.instruction);
-      const output = await runOpencodeProcess({
-        promptText: fullPrompt,
+      const output = await runOpencode({
+        promptFilePath: promptPath,
+        instruction: options.instruction,
         cwd: options.cwd,
         model: options.model,
         format: options.outputFormat,
@@ -513,12 +654,51 @@ async function main(): Promise<void> {
       }
 
       await maybeLaunchInteractive(options, sessionId);
+
       return;
     }
 
-    const output = await runOpencode({
-      promptFilePath: promptPath,
-      instruction: options.instruction,
+    if (options.promptText) {
+      const resolvedPath = resolve(resolvePromptPathAlias(options.promptText));
+      const fileContent = await readFileIfExists(resolvedPath);
+      if (fileContent) {
+        if (options.useClipboard) {
+          const clipboardText = await readClipboard();
+          if (clipboardText) {
+            options.promptText = `${fileContent}\n\n---\n\nAdditional context from clipboard:\n${clipboardText}`;
+          } else {
+            options.promptText = fileContent;
+          }
+        } else {
+          options.promptText = fileContent;
+        }
+      }
+    }
+
+    if (options.forceInteractiveInput && hasInitialPromptSource) {
+      const basePromptText = options.promptText as string;
+      const supplementalInput = process.stdin.isTTY && process.stdout.isTTY
+        ? await readInteractivePrompt('Append input: ', {
+            mainInput: basePromptText,
+            mainInputLabel: 'inline prompt',
+            systemPrompts: options.instruction ? [options.instruction] : [],
+          })
+        : await readAdditionalInput('Append input: ');
+      if (!supplementalInput) {
+        process.stderr.write('No additional input provided for --input. Provide it interactively or pipe it via stdin.\n');
+        process.exitCode = 1;
+        return;
+      }
+      options.promptText = appendAdditionalInput(basePromptText, supplementalInput);
+      showRunInputSummary(basePromptText, supplementalInput);
+      showStatusLine('Starting OpenCode run');
+    }
+
+    const promptText = options.promptText as string;
+    const fullPrompt = composePrompt(promptText, options.instruction);
+
+    const output = await runOpencodeProcess({
+      promptText: fullPrompt,
       cwd: options.cwd,
       model: options.model,
       format: options.outputFormat,
@@ -540,63 +720,6 @@ async function main(): Promise<void> {
     }
 
     await maybeLaunchInteractive(options, sessionId);
-
-    return;
-  }
-
-  if (options.promptText) {
-    const resolvedPath = resolve(options.promptText);
-    const fileContent = await readFileIfExists(resolvedPath);
-    if (fileContent) {
-      if (options.useClipboard) {
-        const clipboardText = await readClipboard();
-        if (clipboardText) {
-          options.promptText = `${fileContent}\n\n---\n\nAdditional context from clipboard:\n${clipboardText}`;
-        } else {
-          options.promptText = fileContent;
-        }
-      } else {
-        options.promptText = fileContent;
-      }
-    }
-  }
-
-  if (options.forceInteractiveInput && hasInitialPromptSource) {
-    const supplementalInput = await readInteractivePrompt('Append input: ');
-    if (!supplementalInput) {
-      process.stderr.write('No additional input provided for --input.\n');
-      process.exitCode = 1;
-      return;
-    }
-    options.promptText = appendAdditionalInput(options.promptText as string, supplementalInput);
-  }
-
-  const promptText = options.promptText as string;
-  const fullPrompt = composePrompt(promptText, options.instruction);
-
-  const output = await runOpencodeProcess({
-    promptText: fullPrompt,
-    cwd: options.cwd,
-    model: options.model,
-    format: options.outputFormat,
-    formatJson: options.formatJson,
-    prettyEvents: options.prettyEvents,
-    showToolOutput: options.showToolOutput,
-    printLogs: options.printLogs,
-    logLevel: options.logLevel,
-    streamOutput: options.streamOutput,
-    thinkingModels: options.thinkingModels,
-    thinkingColor: options.thinkingColor,
-    onSessionId: value => {
-      sessionId = value;
-    },
-  });
-
-  if (!options.streamOutput && output.trim()) {
-    process.stdout.write(`${output}\n`);
-  }
-
-  await maybeLaunchInteractive(options, sessionId);
 }
 
 export function parseArgs(argv: string[], cwd = process.cwd(), env: NodeJS.ProcessEnv = process.env): ParsedCli {

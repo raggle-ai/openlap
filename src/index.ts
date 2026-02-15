@@ -6,4 +6,4 @@ export * from './completions.js';
 export * from './opencode.js';
 
 export const lap = runOpencode;
-export default runOpencode;
+export default lap;

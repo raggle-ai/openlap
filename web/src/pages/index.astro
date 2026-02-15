@@ -1,4 +1,6 @@
 ---
+import InstallTabs from "../components/InstallTabs.astro";
+
 const title = "openlap — Lap the request. Ship the result.";
 const description =
   "openlap is a lightweight CLI wrapper for OpenCode. Run prompts inline, from files, or from built-in examples, then continue in interactive OpenCode when you want to iterate.";
@@ -15,6 +17,7 @@ const description =
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://openlap.dev" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -48,6 +51,14 @@ const description =
         font-family: var(--sans);
         -webkit-font-smoothing: antialiased;
         overflow-x: hidden;
+      }
+
+      .site-header {
+        position: relative;
+        z-index: 1;
+        width: min(1040px, 90vw);
+        margin: 0 auto;
+        padding-top: 1rem;
       }
 
       .bg-grid {
@@ -99,10 +110,9 @@ const description =
       .hero { text-align: center; }
 
       .logo-row {
-        display: inline-flex;
+        display: flex;
         align-items: center;
         gap: 0.6rem;
-        margin-bottom: 1.5rem;
       }
 
       .logo-mark {
@@ -124,21 +134,6 @@ const description =
         font-weight: 700;
         font-size: 1.5rem;
         letter-spacing: -0.02em;
-      }
-
-      .tagline-badge {
-        display: inline-flex;
-        padding: 0.3rem 0.85rem;
-        border-radius: 999px;
-        border: 1px solid var(--border);
-        background: rgba(120, 66, 0, 0.08);
-        color: var(--accent);
-        font-family: var(--mono);
-        font-size: 0.72rem;
-        font-weight: 500;
-        letter-spacing: 0.1em;
-        text-transform: uppercase;
-        margin-bottom: 1.5rem;
       }
 
       h1 {
@@ -164,67 +159,6 @@ const description =
         font-size: 1.08rem;
         line-height: 1.7;
       }
-
-      .install-block {
-        margin: 2.2rem auto 0;
-        max-width: 520px;
-        border-radius: var(--radius);
-        border: 1px solid var(--border);
-        background: rgba(255, 250, 244, 0.96);
-        overflow: hidden;
-        transition: border-color 200ms ease;
-      }
-
-      .install-block:hover {
-        border-color: var(--border-hover);
-      }
-
-      .install-bar {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 0.5rem 0.75rem 0.5rem 1rem;
-        border-bottom: 1px solid var(--border);
-        background: rgba(120, 66, 0, 0.06);
-      }
-
-      .install-bar span {
-        font-family: var(--mono);
-        font-size: 0.72rem;
-        color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-      }
-
-      .copy-btn {
-        padding: 0.3rem 0.6rem;
-        border-radius: 0.4rem;
-        border: 1px solid var(--border);
-        background: transparent;
-        color: var(--muted);
-        font-family: var(--mono);
-        font-size: 0.7rem;
-        cursor: pointer;
-        transition: all 150ms ease;
-      }
-
-      .copy-btn:hover {
-        color: var(--accent);
-        border-color: var(--border-hover);
-      }
-
-      .install-cmd {
-        padding: 1rem 1.1rem;
-        font-family: var(--mono);
-        font-size: 0.88rem;
-        color: #5f3a15;
-        line-height: 1.5;
-        white-space: pre;
-        overflow-x: auto;
-      }
-
-      .install-cmd .prompt { color: var(--accent); }
-      .install-cmd .url { color: var(--blue); }
 
       .actions {
         display: flex;
@@ -386,21 +320,6 @@ const description =
         line-height: 1.55;
       }
 
-      .workflow-note {
-        margin-top: 1rem;
-        color: var(--muted);
-        font-size: 0.86rem;
-      }
-
-      .workflow-note a {
-        color: var(--accent);
-        text-decoration: none;
-      }
-
-      .workflow-note a:hover {
-        text-decoration: underline;
-      }
-
       footer {
         margin-top: 4rem;
         padding-top: 2rem;
@@ -420,6 +339,8 @@ const description =
       footer a:hover { text-decoration: underline; }
 
       @media (max-width: 760px) {
+        .site-header { padding-top: 0.75rem; }
+
         main { padding-top: 3.5rem; }
         .features { grid-template-columns: 1fr; }
         .steps { grid-template-columns: 1fr; }
@@ -431,28 +352,22 @@ const description =
     <div class="bg-grid"></div>
     <div class="glow-orb green"></div>
     <div class="glow-orb blue"></div>
+    <header class="site-header" aria-label="Site header">
+      <div class="logo-row">
+        <span class="logo-mark">&#x27E9;</span>
+        <span class="logo-text">openlap</span>
+      </div>
+    </header>
 
     <main>
       <section class="hero">
-        <div class="logo-row">
-          <span class="logo-mark">&#x27E9;</span>
-          <span class="logo-text">openlap</span>
-        </div>
-        <br />
-        <span class="tagline-badge">OpenCode CLI Wrapper</span>
         <h1>Lap the request.<br /><span class="hl">Ship the result.</span></h1>
         <p class="lead">
           A lightweight CLI wrapper for OpenCode. Run prompts inline, from files, or from
           built-in examples, then continue in interactive OpenCode when you want to iterate.
         </p>
 
-        <div class="install-block">
-          <div class="install-bar">
-            <span>Quick Install</span>
-            <button class="copy-btn" onclick="navigator.clipboard.writeText('npm install -g openlap')">Copy</button>
-          </div>
-          <div class="install-cmd"><span class="prompt">$</span> npm install -g <span class="url">openlap</span></div>
-        </div>
+        <InstallTabs />
 
         <div class="actions">
           <a class="btn primary" href="https://opencode.ai/docs/cli/">OpenCode Docs</a>
@@ -522,7 +437,6 @@ openlap <span class="flag">--no-interactive</span> <span class="flag">--output-f
             <p>In TTY terminals, openlap hands off to interactive OpenCode to keep momentum.</p>
           </article>
         </div>
-        <p class="workflow-note">Want the poetry version? <a href="/ode">Read the Ode to OpenCode</a>.</p>
       </section>
 
       <footer>

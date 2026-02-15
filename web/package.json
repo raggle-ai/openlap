@@ -5,10 +5,23 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
+    "lint": "astro check && npm run format:check",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run test:smoke",
+    "test:smoke": "node --test",
     "build": "astro build",
-    "preview": "astro preview"
+    "preview": "astro preview",
+    "predeploy": "bun run lint && bun run test && bun run build",
+    "deploy": "bun run predeploy && wrangler pages deploy dist --project-name openlap"
   },
   "dependencies": {
     "astro": "^5.3.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.4",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2",
+    "wrangler": "^4.65.0"
   }
 }

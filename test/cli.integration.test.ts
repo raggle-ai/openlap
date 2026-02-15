@@ -136,8 +136,46 @@ test('cli returns a clear error for --input when not in a TTY', async t => {
 
     assert.equal(result.code, 1);
     assert.match(result.stderr, /No additional input provided for --input\./i);
+    assert.match(result.stderr, /pipe it via stdin/i);
   } finally {
     await rm(tmp, { recursive: true, force: true });
+  }
+});
+
+test('cli accepts piped multiline input for --file --input in non-TTY setups', async t => {
+  if (!(await hasBuiltCli())) {
+    t.skip('dist/cli.js not built');
+    return;
+  }
+
+  const tmp = await mkdtemp(join(tmpdir(), 'openlap-cli-input-piped-'));
+  const mockDir = await createMockOpencodeDir();
+
+  try {
+    const promptPath = join(tmp, 'prompt.txt');
+    await writeFile(promptPath, 'from file', 'utf8');
+
+    const env = {
+      ...process.env,
+      PATH: `${mockDir}${delimiter}${process.env.PATH || ''}`,
+    };
+
+    const result = await runCli(['--no-stream', '--file', promptPath, '--input'], {
+      env,
+      input: 'line one\nline two',
+    });
+
+    assert.equal(result.code, 0);
+    assert.match(result.stderr, /Reading additional input from stdin/i);
+    assert.match(result.stderr, /Accepted additional input/i);
+    assert.match(result.stderr, /Starting OpenCode run/i);
+    assert.match(result.stdout, /ECHO:from file/);
+    assert.match(result.stdout, /Additional input:/);
+    assert.match(result.stdout, /line one/);
+    assert.match(result.stdout, /line two/);
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+    await rm(mockDir, { recursive: true, force: true });
   }
 });
 

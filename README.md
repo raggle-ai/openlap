@@ -6,7 +6,7 @@
 
 <p align="center">
   A lightweight CLI wrapper for OpenCode. Run prompts inline, from files, or from built-in examples,
-  then continue in interactive OpenCode when you want to iterate.
+  then continue in interactive OpenCode when you want to iterate. Built with OpenTUI and OpenCode.
 </p>
 
 <p align="center">
@@ -63,6 +63,9 @@ openlap --file ./prompt.md --instruction "Prioritize docs and tests"
 openlap --list-examples
 openlap --example explain
 
+# open the OpenTUI input view with a loaded prompt file
+npm run test:load-ppropt
+
 # stdin / clipboard modes
 echo "Audit security config" | openlap
 openlap --copy
@@ -98,7 +101,8 @@ await lap({
 ## Common Flags
 
 - `--model <name>` set model id
-- `--input` append extra interactive input after your primary prompt source
+- `--input` append extra input after your primary prompt source (interactive prompt or piped stdin)
+- `--input` interactive mode now uses an OpenTUI editor; submit with `Ctrl+D` (or `Cmd/Ctrl+Enter`), cancel with `Esc`
 - `--output-format <pretty|raw|json-events|json-final|jsonl>` set output shape
 - `--show-tool-output` print tool output lines
 - `--print-logs --log-level <DEBUG|INFO|WARN|ERROR>` include OpenCode logs
@@ -169,6 +173,12 @@ Deploy to Cloudflare Pages:
 
 ```bash
 npm run web:deploy
+```
+
+Direct Wrangler CLI deploy (uses `web/wrangler.toml`):
+
+```bash
+npx wrangler pages deploy --config ./web/wrangler.toml
 ```
 
 ## Troubleshooting

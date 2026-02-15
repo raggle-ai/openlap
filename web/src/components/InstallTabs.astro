@@ -1,0 +1,207 @@
+---
+type InstallMethod = {
+  id: string;
+  label: string;
+  command: string;
+};
+
+interface Props {
+  methods?: InstallMethod[];
+}
+
+const methods = Astro.props.methods ?? [
+  { id: "curl", label: "curl", command: "curl -fsSL https://openlap.dev/install.sh | bash" },
+  { id: "npm", label: "npm", command: "npm install -g openlap" }
+];
+
+const [firstMethod] = methods;
+
+if (!firstMethod) {
+  throw new Error("InstallTabs requires at least one install method.");
+}
+
+const panelId = `install-panel-${Math.random().toString(36).slice(2, 9)}`;
+---
+
+<div class="install-block" data-install-tabs>
+  <div class="install-tabs" role="tablist" aria-label="Install methods">
+    {
+      methods.map((method, index) => (
+        <button
+          class="install-tab"
+          role="tab"
+          type="button"
+          aria-selected={index === 0 ? "true" : "false"}
+          aria-controls={panelId}
+          data-install-tab={method.id}
+          data-install-command={method.command}
+        >
+          {method.label}
+        </button>
+      ))
+    }
+  </div>
+
+  <div class="install-cmd" id={panelId} role="tabpanel">
+    <div class="install-command-wrap">
+      <span class="prompt">$</span>
+      <span data-install-command-display>{firstMethod.command}</span>
+    </div>
+    <button class="copy-btn" type="button" data-install-copy>Copy</button>
+  </div>
+
+  <div class="copy-toast" role="status" aria-live="polite" data-install-toast>Copied to clipboard!</div>
+</div>
+
+<script>
+  const containers = document.querySelectorAll<HTMLElement>("[data-install-tabs]");
+
+  containers.forEach((container) => {
+    const tabs = Array.from(container.querySelectorAll<HTMLButtonElement>("[data-install-tab]"));
+    const display = container.querySelector<HTMLElement>("[data-install-command-display]");
+    const copyButton = container.querySelector<HTMLButtonElement>("[data-install-copy]");
+    const toast = container.querySelector<HTMLElement>("[data-install-toast]");
+
+    if (!tabs.length || !display || !copyButton || !toast) return;
+
+    let activeCommand = tabs[0]?.dataset.installCommand || "";
+    let hideToastTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const setActiveTab = (tab: HTMLButtonElement) => {
+      activeCommand = tab.dataset.installCommand || "";
+      display.textContent = activeCommand;
+
+      tabs.forEach((candidate) => {
+        candidate.setAttribute("aria-selected", candidate === tab ? "true" : "false");
+      });
+    };
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => setActiveTab(tab));
+    });
+
+    copyButton.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(activeCommand);
+        toast.classList.add("is-visible");
+        if (hideToastTimer) clearTimeout(hideToastTimer);
+        hideToastTimer = setTimeout(() => toast.classList.remove("is-visible"), 1400);
+      } catch {
+        toast.textContent = "Clipboard unavailable";
+        toast.classList.add("is-visible");
+        if (hideToastTimer) clearTimeout(hideToastTimer);
+        hideToastTimer = setTimeout(() => {
+          toast.classList.remove("is-visible");
+          toast.textContent = "Copied to clipboard!";
+        }, 1600);
+      }
+    });
+  });
+</script>
+
+<style>
+  .install-block {
+    margin: 2.2rem auto 0;
+    max-width: 760px;
+    position: relative;
+  }
+
+  .install-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    width: fit-content;
+    margin: 0 auto 0.95rem;
+    padding: 0.35rem;
+    border-radius: 0.75rem;
+    background: rgba(120, 66, 0, 0.1);
+  }
+
+  .install-tab {
+    padding: 0.42rem 0.9rem;
+    border-radius: 0.55rem;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: all 160ms ease;
+  }
+
+  .install-tab[aria-selected="true"] {
+    color: #f8fbff;
+    background: #0c2047;
+    border-color: rgba(146, 187, 255, 0.5);
+  }
+
+  .install-cmd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.85rem 0.95rem;
+    border-radius: 0.85rem;
+    background: #0a1428;
+    box-shadow: 0 18px 40px rgba(8, 18, 38, 0.16);
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    color: #f0f6ff;
+    line-height: 1.5;
+    text-align: left;
+  }
+
+  .install-command-wrap {
+    min-width: 0;
+    flex: 1;
+    white-space: nowrap;
+    overflow-x: auto;
+  }
+
+  .prompt {
+    color: #7db3ff;
+  }
+
+  .copy-btn {
+    padding: 0.5rem 0.78rem;
+    border-radius: 0.45rem;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    color: #ecf4ff;
+    font-family: var(--mono);
+    font-size: 0.74rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 150ms ease;
+  }
+
+  .copy-btn:hover {
+    border-color: rgba(255, 255, 255, 0.36);
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  .copy-toast {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.6rem);
+    padding: 0.4rem 0.6rem;
+    border-radius: 0.45rem;
+    font-family: var(--mono);
+    font-size: 0.72rem;
+    color: #f8fbff;
+    background: #0c2047;
+    border: 1px solid rgba(146, 187, 255, 0.5);
+    opacity: 0;
+    transform: translateY(-3px);
+    pointer-events: none;
+    transition: opacity 180ms ease, transform 180ms ease;
+  }
+
+  .copy-toast.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+</style>
