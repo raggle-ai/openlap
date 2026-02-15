@@ -5,6 +5,7 @@ import { readFileSync, realpathSync } from 'fs';
 import { dirname, resolve, delimiter } from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+import { createInterface } from 'readline/promises';
 import { EXAMPLE_QUERIES, formatExamples } from './examples.js';
 import { resolveExampleQuery } from './example.js';
 import { getCompletionScript, isCompletionShell, type CompletionShell } from './completions.js';
@@ -198,6 +199,7 @@ function loadEnvDefaults(baseCwd: string, env: NodeJS.ProcessEnv): CliEnvDefault
 const HELP_TEXT = `openlap - request lapper for OpenCode CLI
 
 Usage:
+  openlap
   openlap "<prompt text>"
   echo "<prompt text>" | openlap
   openlap --file ./prompt.md --instruction "extra direction"
@@ -335,6 +337,61 @@ async function readStdinIfPiped(): Promise<string | null> {
   });
 }
 
+async function readInteractivePrompt(): Promise<string | null> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return null;
+  }
+
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    const firstLine = await rl.question('Enter prompt: ');
+    const trailingPastedInput = await captureTrailingPastedInput();
+    const value = `${firstLine}${trailingPastedInput}`.trim();
+    return value || null;
+  } finally {
+    rl.close();
+  }
+}
+
+async function captureTrailingPastedInput(idleMs = 120): Promise<string> {
+  if (!process.stdin.isTTY) {
+    return '';
+  }
+
+  return new Promise(resolvePromise => {
+    let data = '';
+    let timeoutId: NodeJS.Timeout | undefined;
+
+    const finish = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      process.stdin.off('data', onData);
+      resolvePromise(data);
+    };
+
+    const scheduleFinish = () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      timeoutId = setTimeout(finish, idleMs);
+    };
+
+    const onData = (chunk: Buffer | string) => {
+      data += chunk.toString();
+      scheduleFinish();
+    };
+
+    process.stdin.on('data', onData);
+    process.stdin.resume();
+    scheduleFinish();
+  });
+}
+
 function getPackageVersion(): string {
   try {
     const cliPath = fileURLToPath(import.meta.url);
@@ -399,9 +456,14 @@ async function main(): Promise<void> {
         return;
       }
     } else {
-      process.stderr.write('No prompt provided. Use --help for usage.\n');
-      process.exitCode = 1;
-      return;
+      const typedPrompt = await readInteractivePrompt();
+      if (typedPrompt) {
+        options.promptText = typedPrompt;
+      } else {
+        process.stderr.write('No prompt provided. Pass prompt text, use --file, or pipe input.\n');
+        process.exitCode = 1;
+        return;
+      }
     }
   }
 
