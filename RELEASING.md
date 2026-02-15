@@ -5,6 +5,12 @@
 - `main` is green in GitHub Actions.
 - npm Trusted Publisher is configured for `raggle-ai/openlap` and `.github/workflows/publish.yml`.
 
+## Automatic publish on push
+
+- `Publish` now runs on pushes to `main` and tags (`v*`).
+- On `main`, it publishes only when `package.json` contains a version that is not already on npm.
+- On tag pushes, it still creates the GitHub Release artifact and also publishes to npm (unless already published).
+
 ## Release steps
 
 Quick path (recommended):
