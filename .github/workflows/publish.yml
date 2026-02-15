@@ -57,7 +57,9 @@ jobs:
 
       - name: Resolve package version
         id: package_version
-        run: echo "version=$(node -p \"require('./package.json').version\")" >> "$GITHUB_OUTPUT"
+        run: |
+          version=$(npm pkg get version | tr -d '"')
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Check npm for existing version
         id: npm_version_check
