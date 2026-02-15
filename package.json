@@ -1,6 +1,6 @@
 {
   "name": "openlap",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Request-lapping wrapper for the OpenCode CLI",
   "license": "MIT",
   "repository": {
