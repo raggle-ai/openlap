@@ -1,0 +1,534 @@
+---
+const title = "openlap — Lap the request. Ship the result.";
+const description =
+  "openlap is a lightweight CLI wrapper for OpenCode. Run prompts inline, from files, or from built-in examples, then continue in interactive OpenCode when you want to iterate.";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://openlap.dev" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #fff6eb;
+        --bg-soft: #f6e6d4;
+        --panel: rgba(255, 249, 240, 0.92);
+        --text: #3f2200;
+        --muted: #8a6438;
+        --accent: #784200;
+        --accent-glow: rgba(120, 66, 0, 0.2);
+        --blue: #a2611f;
+        --blue-glow: rgba(162, 97, 31, 0.16);
+        --border: rgba(120, 66, 0, 0.2);
+        --border-hover: rgba(120, 66, 0, 0.45);
+        --radius: 0.875rem;
+        --mono: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+        --sans: "Inter", -apple-system, "Segoe UI", sans-serif;
+      }
+
+      * { box-sizing: border-box; margin: 0; }
+
+      body {
+        min-height: 100vh;
+        color: var(--text);
+        background:
+          radial-gradient(circle at 0% 0%, rgba(120, 66, 0, 0.08), transparent 30%),
+          radial-gradient(circle at 100% 0%, rgba(120, 66, 0, 0.06), transparent 34%),
+          var(--bg);
+        font-family: var(--sans);
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+
+      .bg-grid {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        background-image:
+          linear-gradient(rgba(120, 66, 0, 0.07) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(120, 66, 0, 0.07) 1px, transparent 1px);
+        background-size: 64px 64px;
+        mask-image: radial-gradient(ellipse 70% 50% at 50% 0%, black 20%, transparent 100%);
+        -webkit-mask-image: radial-gradient(ellipse 70% 50% at 50% 0%, black 20%, transparent 100%);
+      }
+
+      .glow-orb {
+        position: fixed;
+        border-radius: 50%;
+        filter: blur(100px);
+        z-index: 0;
+        pointer-events: none;
+      }
+
+      .glow-orb.green {
+        width: 600px;
+        height: 600px;
+        top: -180px;
+        left: 10%;
+        background: var(--accent-glow);
+        opacity: 0.35;
+      }
+
+      .glow-orb.blue {
+        width: 500px;
+        height: 500px;
+        top: -100px;
+        right: 5%;
+        background: var(--blue-glow);
+        opacity: 0.45;
+      }
+
+      main {
+        position: relative;
+        z-index: 1;
+        width: min(1040px, 90vw);
+        margin: 0 auto;
+        padding: 5rem 0 4rem;
+      }
+
+      .hero { text-align: center; }
+
+      .logo-row {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+        margin-bottom: 1.5rem;
+      }
+
+      .logo-mark {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2.6rem;
+        height: 2.6rem;
+        border-radius: 0.6rem;
+        background: linear-gradient(135deg, var(--accent), var(--blue));
+        font-family: var(--mono);
+        font-weight: 700;
+        font-size: 1.2rem;
+        color: #fff6eb;
+      }
+
+      .logo-text {
+        font-family: var(--mono);
+        font-weight: 700;
+        font-size: 1.5rem;
+        letter-spacing: -0.02em;
+      }
+
+      .tagline-badge {
+        display: inline-flex;
+        padding: 0.3rem 0.85rem;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(120, 66, 0, 0.08);
+        color: var(--accent);
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        font-weight: 500;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        margin-bottom: 1.5rem;
+      }
+
+      h1 {
+        font-size: clamp(2.2rem, 5.5vw, 3.8rem);
+        font-weight: 800;
+        line-height: 1.08;
+        letter-spacing: -0.035em;
+        max-width: 18ch;
+        margin: 0 auto 1.2rem;
+      }
+
+      h1 .hl {
+        background: linear-gradient(120deg, var(--accent), var(--blue));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .lead {
+        max-width: 56ch;
+        margin: 0 auto;
+        color: var(--muted);
+        font-size: 1.08rem;
+        line-height: 1.7;
+      }
+
+      .install-block {
+        margin: 2.2rem auto 0;
+        max-width: 520px;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: rgba(255, 250, 244, 0.96);
+        overflow: hidden;
+        transition: border-color 200ms ease;
+      }
+
+      .install-block:hover {
+        border-color: var(--border-hover);
+      }
+
+      .install-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0.75rem 0.5rem 1rem;
+        border-bottom: 1px solid var(--border);
+        background: rgba(120, 66, 0, 0.06);
+      }
+
+      .install-bar span {
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+
+      .copy-btn {
+        padding: 0.3rem 0.6rem;
+        border-radius: 0.4rem;
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--muted);
+        font-family: var(--mono);
+        font-size: 0.7rem;
+        cursor: pointer;
+        transition: all 150ms ease;
+      }
+
+      .copy-btn:hover {
+        color: var(--accent);
+        border-color: var(--border-hover);
+      }
+
+      .install-cmd {
+        padding: 1rem 1.1rem;
+        font-family: var(--mono);
+        font-size: 0.88rem;
+        color: #5f3a15;
+        line-height: 1.5;
+        white-space: pre;
+        overflow-x: auto;
+      }
+
+      .install-cmd .prompt { color: var(--accent); }
+      .install-cmd .url { color: var(--blue); }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.75rem;
+        margin-top: 1.6rem;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.65rem 1.15rem;
+        border-radius: 0.6rem;
+        border: 1px solid var(--border);
+        text-decoration: none;
+        color: var(--text);
+        font-weight: 600;
+        font-size: 0.9rem;
+        transition: all 180ms ease;
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+        border-color: var(--border-hover);
+        background: rgba(120, 66, 0, 0.06);
+      }
+
+      .btn.primary {
+        background: linear-gradient(135deg, var(--accent), #a2611f);
+        color: #fff6eb;
+        border: 0;
+        font-weight: 700;
+      }
+
+      .btn.primary:hover {
+        background: linear-gradient(135deg, #8f510f, #b36d28);
+      }
+
+      .btn svg {
+        width: 1rem;
+        height: 1rem;
+        fill: currentColor;
+      }
+
+      .features {
+        margin-top: 4rem;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+      }
+
+      .feat {
+        padding: 1.3rem 1.2rem;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: var(--panel);
+        transition: border-color 200ms ease;
+      }
+
+      .feat:hover {
+        border-color: var(--border-hover);
+      }
+
+      .feat-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 2rem;
+        height: 2rem;
+        border-radius: 0.5rem;
+        background: rgba(120, 66, 0, 0.12);
+        color: var(--accent);
+        font-size: 1rem;
+        margin-bottom: 0.7rem;
+      }
+
+      .feat h2 {
+        font-size: 0.95rem;
+        font-weight: 700;
+        margin-bottom: 0.4rem;
+      }
+
+      .feat p {
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.55;
+      }
+
+      .usage-section {
+        margin-top: 3.5rem;
+      }
+
+      .workflow-section {
+        margin-top: 3.5rem;
+      }
+
+      .section-label {
+        display: inline-flex;
+        font-family: var(--mono);
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--accent);
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        margin-bottom: 0.8rem;
+      }
+
+      .usage-section h2 {
+        font-size: 1.6rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin-bottom: 1rem;
+      }
+
+      .code-block {
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: rgba(255, 250, 244, 0.96);
+        overflow: hidden;
+      }
+
+      .code-block pre {
+        padding: 1.1rem 1.2rem;
+        font-family: var(--mono);
+        font-size: 0.85rem;
+        color: #5f3a15;
+        line-height: 1.6;
+        overflow-x: auto;
+      }
+
+      .code-block .comment { color: #9b7b57; }
+      .code-block .flag { color: var(--blue); }
+      .code-block .string { color: var(--accent); }
+
+      .steps {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1rem;
+      }
+
+      .step {
+        padding: 1.2rem;
+        border-radius: var(--radius);
+        border: 1px solid var(--border);
+        background: var(--panel);
+      }
+
+      .step h3 {
+        font-size: 0.95rem;
+        font-weight: 700;
+        margin-bottom: 0.45rem;
+      }
+
+      .step p {
+        color: var(--muted);
+        font-size: 0.88rem;
+        line-height: 1.55;
+      }
+
+      .workflow-note {
+        margin-top: 1rem;
+        color: var(--muted);
+        font-size: 0.86rem;
+      }
+
+      .workflow-note a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      .workflow-note a:hover {
+        text-decoration: underline;
+      }
+
+      footer {
+        margin-top: 4rem;
+        padding-top: 2rem;
+        border-top: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      footer a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      footer a:hover { text-decoration: underline; }
+
+      @media (max-width: 760px) {
+        main { padding-top: 3.5rem; }
+        .features { grid-template-columns: 1fr; }
+        .steps { grid-template-columns: 1fr; }
+        footer { flex-direction: column; gap: 0.5rem; text-align: center; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="bg-grid"></div>
+    <div class="glow-orb green"></div>
+    <div class="glow-orb blue"></div>
+
+    <main>
+      <section class="hero">
+        <div class="logo-row">
+          <span class="logo-mark">&#x27E9;</span>
+          <span class="logo-text">openlap</span>
+        </div>
+        <br />
+        <span class="tagline-badge">OpenCode CLI Wrapper</span>
+        <h1>Lap the request.<br /><span class="hl">Ship the result.</span></h1>
+        <p class="lead">
+          A lightweight CLI wrapper for OpenCode. Run prompts inline, from files, or from
+          built-in examples, then continue in interactive OpenCode when you want to iterate.
+        </p>
+
+        <div class="install-block">
+          <div class="install-bar">
+            <span>Quick Install</span>
+            <button class="copy-btn" onclick="navigator.clipboard.writeText('npm install -g openlap')">Copy</button>
+          </div>
+          <div class="install-cmd"><span class="prompt">$</span> npm install -g <span class="url">openlap</span></div>
+        </div>
+
+        <div class="actions">
+          <a class="btn primary" href="https://opencode.ai/docs/cli/">OpenCode Docs</a>
+          <a class="btn" href="https://github.com/raggle-ai/openlap#install">Install Docs</a>
+          <a class="btn" href="https://github.com/raggle-ai/openlap#quick-start">Quick Start</a>
+          <a class="btn" href="https://github.com/raggle-ai/openlap">
+            <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            GitHub
+          </a>
+        </div>
+      </section>
+
+      <section class="features" aria-label="Feature highlights">
+        <article class="feat">
+          <div class="feat-icon">&#x2192;</div>
+          <h2>Multiple input modes</h2>
+          <p>Inline text, file prompts, piped stdin, clipboard, or built-in examples — pick whichever fits.</p>
+        </article>
+        <article class="feat">
+          <div class="feat-icon">&#x2699;</div>
+          <h2>Script &amp; CI ready</h2>
+          <p>Predictable output, structured JSON, and non-interactive mode for automation pipelines.</p>
+        </article>
+        <article class="feat">
+          <div class="feat-icon">&#x26A1;</div>
+          <h2>OpenCode native</h2>
+          <p>Routes through OpenCode so your models, tools, and config stay consistent everywhere.</p>
+        </article>
+      </section>
+
+      <section class="usage-section" aria-label="Usage examples">
+        <span class="section-label">Usage</span>
+        <h2>Get started in seconds</h2>
+        <div class="code-block">
+          <pre><code><span class="comment"># run a prompt inline</span>
+openlap <span class="string">"Review this repository for launch readiness"</span>
+
+<span class="comment"># run from a file with extra instructions</span>
+openlap <span class="flag">--file</span> ./prompt.md <span class="flag">--instruction</span> <span class="string">"Prioritize docs and onboarding"</span>
+
+<span class="comment"># use built-in examples</span>
+openlap <span class="flag">--list-examples</span>
+openlap <span class="flag">--example</span> explain
+
+<span class="comment"># pipe input</span>
+echo <span class="string">"Audit security config"</span> | openlap
+
+<span class="comment"># CI-safe one-shot JSON output</span>
+openlap <span class="flag">--no-interactive</span> <span class="flag">--output-format</span> json-final <span class="flag">--file</span> ./prompt.md</code></pre>
+        </div>
+      </section>
+
+      <section class="workflow-section" aria-label="How it works">
+        <span class="section-label">Workflow</span>
+        <h2>How it works</h2>
+        <div class="steps">
+          <article class="step">
+            <h3>1. Capture request</h3>
+            <p>Run a request inline, from a prompt file, or from a built-in example.</p>
+          </article>
+          <article class="step">
+            <h3>2. Run anywhere</h3>
+            <p>Use the same command in local dev, scripts, and CI with deterministic output options.</p>
+          </article>
+          <article class="step">
+            <h3>3. Continue iterating</h3>
+            <p>In TTY terminals, openlap hands off to interactive OpenCode to keep momentum.</p>
+          </article>
+        </div>
+        <p class="workflow-note">Want the poetry version? <a href="/ode">Read the Ode to OpenCode</a>.</p>
+      </section>
+
+      <footer>
+        <span>openlap &mdash; built for the <a href="https://opencode.ai">OpenCode</a> ecosystem</span>
+        <span><a href="https://openlap.dev">openlap.dev</a></span>
+      </footer>
+    </main>
+  </body>
+</html>

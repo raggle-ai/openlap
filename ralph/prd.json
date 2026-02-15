@@ -1,0 +1,222 @@
+{
+  "config": {
+    "commitStrategy": "per-story",
+    "autoCommit": true,
+    "commitPrefix": "feat",
+    "maxPromptSize": 102400,
+    "verifyTimeout": 120,
+    "fallbackChain": [
+      "opencode",
+      "claude",
+      "codex"
+    ]
+  },
+  "references": [
+    {
+      "type": "documentation",
+      "path": "ralph/README.md",
+      "description": "Ralph setup instructions and configuration guide"
+    }
+  ],
+  "userStories": [
+    {
+      "title": "Add example feature",
+      "acceptanceCriteria": [
+        "Feature works as expected",
+        "typecheck passes",
+        "tests pass"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "Implementation: src/example.ts | Reference: https://example.com/docs | Dependencies: see package.json",
+      "startedAt": "2026-02-13T19:03:36.529Z",
+      "completedAt": "2026-02-13T19:05:40.546Z"
+    },
+    {
+      "title": "Create an Openlap brand narrative developers can repeat",
+      "priority": 2,
+      "passes": true,
+      "acceptanceCriteria": [
+        "One concise positioning statement explains what request-lapping means",
+        "A tagline and 3 supporting message pillars are documented",
+        "Messaging includes when to use openlap in local development and CI",
+        "Voice guidelines include examples of preferred and discouraged phrasing"
+      ],
+      "verifyCommands": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": "Target outcome: teams can describe openlap consistently in docs, PRs, and onboarding materials.",
+      "startedAt": "2026-02-13T19:05:43.036Z",
+      "completedAt": "2026-02-13T19:10:32.000Z"
+    },
+    {
+      "title": "Ship reusable team scripts and prompt templates for Openlap adoption",
+      "priority": 4,
+      "passes": false,
+      "acceptanceCriteria": [
+        "At least three npm script examples are documented (review, explain, fix)",
+        "Prompt template files include placeholders for repo-specific context",
+        "Examples cover interactive local use and non-interactive CI mode",
+        "Template naming is consistent and easy to discover"
+      ],
+      "dependsOn": [
+        "Create an Openlap brand narrative developers can repeat"
+      ],
+      "verifyCommands": [
+        "npm run build",
+        "npm run typecheck"
+      ],
+      "notes": "Focus on reducing adoption friction by making first-run setup obvious.",
+      "startedAt": "2026-02-13T19:27:39.486Z"
+    },
+    {
+      "title": "Define Openlap adoption metrics and feedback loop",
+      "priority": 5,
+      "passes": false,
+      "acceptanceCriteria": [
+        "Metrics include command usage, successful run rate, and repeat usage after one week",
+        "A lightweight feedback channel is documented for issues and UX friction",
+        "A weekly review process is defined to prioritize adoption improvements",
+        "Metrics can be reviewed without collecting sensitive prompt data"
+      ],
+      "dependsOn": [
+        "Ship reusable team scripts and prompt templates for Openlap adoption"
+      ],
+      "verifyCommands": [
+        "npm run lint"
+      ],
+      "notes": "Use privacy-safe signals to measure whether branding and onboarding are increasing active usage."
+    },
+    {
+      "title": "Add GitHub Actions workflow for automated npm publish on version tags",
+      "priority": 6,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Workflow triggers on v* tag push (e.g. git tag v0.2.0)",
+        "Full test and lint suite runs before publish step",
+        "Package is published to npm with --access public",
+        "GitHub Release is created with auto-generated changelog"
+      ],
+      "verifyCommands": [
+        "npm run lint",
+        "npm test"
+      ],
+      "notes": "Currently published manually. Add .github/workflows/publish.yml. Requires NPM_TOKEN secret in repo settings.",
+      "startedAt": "2026-02-13T19:31:35.908Z",
+      "completedAt": "2026-02-13T20:04:00.000Z"
+    },
+    {
+      "title": "Support project-level config file for CLI defaults",
+      "priority": 7,
+      "passes": true,
+      "acceptanceCriteria": [
+        "openlap reads .openlap.json or package.json#openlap from cwd on startup",
+        "Config supports all CLI flags as defaults (model, thinking-models, thinking-color, no-interactive)",
+        "CLI flags override config file values",
+        "Invalid config produces a clear error message"
+      ],
+      "verifyCommands": [
+        "npm run typecheck",
+        "npm test"
+      ],
+      "notes": "Add loadConfigFile(cwd) in src/cli.ts before parseArgs(). Merge config into options. Teams standardize model + flags per project.",
+      "startedAt": "2026-02-13T19:33:48.947Z",
+      "completedAt": "2026-02-13T20:23:00.000Z"
+    },
+    {
+      "title": "Support environment variables for CI-friendly configuration",
+      "priority": 8,
+      "passes": true,
+      "acceptanceCriteria": [
+        "OPENLAP_MODEL sets default model",
+        "OPENLAP_NO_INTERACTIVE disables interactive handoff",
+        "OPENLAP_CWD sets default working directory",
+        "OPENLAP_THINKING_MODELS sets thinking highlight models",
+        "Env vars are overridden by explicit CLI flags",
+        "Env vars are overridden by config file values"
+      ],
+      "dependsOn": [
+        "Support project-level config file for CLI defaults"
+      ],
+      "verifyCommands": [
+        "npm run typecheck",
+        "npm test"
+      ],
+      "notes": "Modify parseArgs() in src/cli.ts to check env vars as fallback. Priority: CLI flags > config file > env vars > built-in defaults.",
+      "startedAt": "2026-02-13T19:35:48.142Z",
+      "completedAt": "2026-02-13T21:00:00.000Z"
+    },
+    {
+      "title": "Improve error messages with contextual fix suggestions",
+      "priority": 9,
+      "passes": false,
+      "acceptanceCriteria": [
+        "ENOENT for opencode binary suggests install steps and links to opencode.ai",
+        "Empty clipboard with --copy suggests alternative input methods",
+        "Missing --file path shows the resolved path and suggests checking it",
+        "Permission errors on --cwd suggest the correct directory"
+      ],
+      "verifyCommands": [
+        "npm run typecheck",
+        "npm test"
+      ],
+      "notes": "Small effort, high DX impact. Touch src/cli.ts (clipboard/stdin paths) and src/opencode.ts (ENOENT handler at line ~351).",
+      "startedAt": "2026-02-13T19:38:02.573Z"
+    },
+    {
+      "title": "Add edge case tests for event parsing and large output streaming",
+      "priority": 10,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Test covers malformed JSON mixed with valid JSON in stream buffer",
+        "Test covers tool output exceeding 1MB through collapseToMax()",
+        "Test covers session ID extraction from various line positions",
+        "Test covers --show-tool-output with nested JSON in tool content",
+        "Test covers thinking block detection with unusual markdown formatting"
+      ],
+      "verifyCommands": [
+        "npm test"
+      ],
+      "notes": "Current coverage in test/opencode.test.ts is solid but misses stream edge cases. Focus on buffer boundary and malformed input resilience.",
+      "startedAt": "2026-02-13T19:43:30.112Z",
+      "completedAt": "2026-02-13T21:20:00.000Z"
+    },
+    {
+      "title": "Add shell completion scripts for bash, zsh, and fish",
+      "priority": 11,
+      "passes": true,
+      "acceptanceCriteria": [
+        "Bash completion script autocompletes all flags and example names",
+        "Zsh completion script autocompletes all flags and example names",
+        "Fish completion script autocompletes all flags and example names",
+        "openlap --completions <shell> outputs the appropriate script",
+        "Install instructions documented in README"
+      ],
+      "verifyCommands": [
+        "npm run build"
+      ],
+      "notes": "Add completions/ directory with static scripts or generate dynamically via --completions flag. Example names: explain, tests, refactor, docs, review.",
+      "startedAt": "2026-02-13T19:46:37.205Z",
+      "completedAt": "2026-02-13T22:05:00.000Z"
+    },
+    {
+      "title": "Add structured output format options beyond raw and JSON events",
+      "priority": 12,
+      "passes": true,
+      "acceptanceCriteria": [
+        "--output-format json-final returns a single JSON object with all text and tool results",
+        "--output-format jsonl returns one JSON object per event line",
+        "Default streaming behavior is unchanged",
+        "Programmatic API in src/opencode.ts supports format parameter"
+      ],
+      "verifyCommands": [
+        "npm run typecheck",
+        "npm test"
+      ],
+      "notes": "Enables integration with external analytics, logging pipelines, and structured CI output. Consider semver implications for API changes.",
+      "startedAt": "2026-02-13T19:50:36.972Z",
+      "completedAt": "2026-02-13T23:10:00.000Z"
+    }
+  ]
+}

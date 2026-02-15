@@ -1,0 +1,28 @@
+node_modules/
+dist/
+*.log
+opencode.json
+ralph/.ralph-state
+ralph/.circuit-breaker-state
+ralph/logs/
+/.pets
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Secrets and key material
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+id_rsa
+id_rsa.pub
+*.kubeconfig
+
+# OS/editor noise
+.DS_Store

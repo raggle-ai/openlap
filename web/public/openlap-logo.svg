@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="436" height="132" viewBox="0 0 436 132" role="img" aria-labelledby="title desc">
+  <title id="title">openlap logo</title>
+  <desc id="desc">Openlap wordmark with gradient icon.</desc>
+  <defs>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#fff6eb"/>
+      <stop offset="100%" stop-color="#f4debf"/>
+    </linearGradient>
+  </defs>
+  <rect x="20" y="14" width="84" height="104" rx="18" fill="url(#mark)"/>
+  <text x="61" y="79" text-anchor="middle" fill="#784200" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="46" font-weight="700">&gt;</text>
+  <text x="122" y="84" fill="#784200" font-family="Inter, Segoe UI, Arial, sans-serif" font-size="58" font-weight="700" letter-spacing="-1">openlap</text>
+</svg>

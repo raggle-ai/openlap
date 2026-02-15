@@ -1,0 +1,15 @@
+title = "openlap gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Allow placeholder examples in docs"
+paths = [
+  '''^README\.md$''',
+  '''^example-prompts/'''
+]
+regexes = [
+  '''(?i)(example|sample|placeholder)[_ -]?(api[_-]?key|secret|token|password)''',
+  '''(?i)(your|test|dummy|fake)[_ -]?(api[_-]?key|secret|token|password)'''
+]
