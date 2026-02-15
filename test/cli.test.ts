@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtemp, writeFile, rm, mkdir } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { parseArgs } from '../src/cli.js';
+import { appendAdditionalInput, parseArgs } from '../src/cli.js';
 
 async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), 'openlap-cli-test-'));
@@ -73,6 +73,21 @@ test('parseArgs supports inline prompt text', () => {
 test('parseArgs allows disabling interactive handoff', () => {
   const parsed = parseArgs(['--no-interactive', 'review this repo']);
   assert.equal(parsed.options.launchInteractive, false);
+});
+
+test('parseArgs supports --input to append interactive input', () => {
+  const parsed = parseArgs(['--file', './prompt.md', '--input']);
+  assert.equal(parsed.options.forceInteractiveInput, true);
+});
+
+test('appendAdditionalInput combines base prompt and appended input', () => {
+  const combined = appendAdditionalInput('Summarize the codebase.', 'Focus on src/cli.ts changes.');
+  assert.equal(combined, 'Summarize the codebase.\n\n---\n\nAdditional input:\nFocus on src/cli.ts changes.');
+});
+
+test('appendAdditionalInput trims trailing whitespace from base prompt', () => {
+  const combined = appendAdditionalInput('Prompt body.\n\n', 'Follow-up notes');
+  assert.equal(combined, 'Prompt body.\n\n---\n\nAdditional input:\nFollow-up notes');
 });
 
 test('parseArgs supports example prompt', () => {

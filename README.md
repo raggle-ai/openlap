@@ -98,6 +98,7 @@ await lap({
 ## Common Flags
 
 - `--model <name>` set model id
+- `--input` append extra interactive input after your primary prompt source
 - `--output-format <pretty|raw|json-events|json-final|jsonl>` set output shape
 - `--show-tool-output` print tool output lines
 - `--print-logs --log-level <DEBUG|INFO|WARN|ERROR>` include OpenCode logs

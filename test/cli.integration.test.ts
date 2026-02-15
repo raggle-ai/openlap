@@ -120,6 +120,27 @@ test('cli uses piped stdin when prompt args are missing', async t => {
   }
 });
 
+test('cli returns a clear error for --input when not in a TTY', async t => {
+  if (!(await hasBuiltCli())) {
+    t.skip('dist/cli.js not built');
+    return;
+  }
+
+  const tmp = await mkdtemp(join(tmpdir(), 'openlap-cli-input-'));
+
+  try {
+    const promptPath = join(tmp, 'prompt.txt');
+    await writeFile(promptPath, 'from file', 'utf8');
+
+    const result = await runCli(['--file', promptPath, '--input']);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /No additional input provided for --input\./i);
+  } finally {
+    await rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('cli fails fast for invalid --cwd path type', async t => {
   if (!(await hasBuiltCli())) {
     t.skip('dist/cli.js not built');

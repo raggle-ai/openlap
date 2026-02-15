@@ -29,6 +29,7 @@ interface CliOptions {
   streamOutput: boolean;
   launchInteractive: boolean;
   useClipboard: boolean;
+  forceInteractiveInput: boolean;
   thinkingModels?: string[];
   thinkingColor: ThinkingColor;
 }
@@ -214,6 +215,7 @@ Options:
   -m, --model <name>      OpenCode model id
   -C, --cwd <path>        Working directory for opencode run (default: current dir)
   -c, --copy              Read prompt from clipboard
+      --input             Prompt for additional input and append it
       --example <name>    Use a built-in example query
       --list-examples     Show built-in examples
       --completions <sh>  Print completion script (bash|zsh|fish)
@@ -337,7 +339,7 @@ async function readStdinIfPiped(): Promise<string | null> {
   });
 }
 
-async function readInteractivePrompt(): Promise<string | null> {
+async function readInteractivePrompt(promptLabel = 'Enter prompt: '): Promise<string | null> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     return null;
   }
@@ -348,13 +350,17 @@ async function readInteractivePrompt(): Promise<string | null> {
   });
 
   try {
-    const firstLine = await rl.question('Enter prompt: ');
+    const firstLine = await rl.question(promptLabel);
     const trailingPastedInput = await captureTrailingPastedInput();
     const value = `${firstLine}${trailingPastedInput}`.trim();
     return value || null;
   } finally {
     rl.close();
   }
+}
+
+export function appendAdditionalInput(basePrompt: string, additionalInput: string): string {
+  return `${basePrompt.trimEnd()}\n\n---\n\nAdditional input:\n${additionalInput}`;
 }
 
 async function captureTrailingPastedInput(idleMs = 120): Promise<string> {
@@ -408,6 +414,7 @@ function getPackageVersion(): string {
 async function main(): Promise<void> {
   const parsed = parseArgs(process.argv.slice(2));
   const { action, options } = parsed;
+  const hasInitialPromptSource = Boolean(options.promptText || options.promptFilePath);
 
   if (action === 'help') {
     process.stdout.write(HELP_TEXT);
@@ -472,6 +479,43 @@ async function main(): Promise<void> {
   if (options.promptFilePath) {
     const promptPath = resolve(options.promptFilePath);
     await ensureFilePath(promptPath, '--file');
+
+    if (options.forceInteractiveInput && hasInitialPromptSource) {
+      const supplementalInput = await readInteractivePrompt('Append input: ');
+      if (!supplementalInput) {
+        process.stderr.write('No additional input provided for --input.\n');
+        process.exitCode = 1;
+        return;
+      }
+
+      const basePrompt = await readFile(promptPath, 'utf-8');
+      const fullPrompt = composePrompt(appendAdditionalInput(basePrompt, supplementalInput), options.instruction);
+      const output = await runOpencodeProcess({
+        promptText: fullPrompt,
+        cwd: options.cwd,
+        model: options.model,
+        format: options.outputFormat,
+        formatJson: options.formatJson,
+        prettyEvents: options.prettyEvents,
+        showToolOutput: options.showToolOutput,
+        printLogs: options.printLogs,
+        logLevel: options.logLevel,
+        streamOutput: options.streamOutput,
+        thinkingModels: options.thinkingModels,
+        thinkingColor: options.thinkingColor,
+        onSessionId: value => {
+          sessionId = value;
+        },
+      });
+
+      if (!options.streamOutput && output.trim()) {
+        process.stdout.write(`${output}\n`);
+      }
+
+      await maybeLaunchInteractive(options, sessionId);
+      return;
+    }
+
     const output = await runOpencode({
       promptFilePath: promptPath,
       instruction: options.instruction,
@@ -515,6 +559,16 @@ async function main(): Promise<void> {
         options.promptText = fileContent;
       }
     }
+  }
+
+  if (options.forceInteractiveInput && hasInitialPromptSource) {
+    const supplementalInput = await readInteractivePrompt('Append input: ');
+    if (!supplementalInput) {
+      process.stderr.write('No additional input provided for --input.\n');
+      process.exitCode = 1;
+      return;
+    }
+    options.promptText = appendAdditionalInput(options.promptText as string, supplementalInput);
   }
 
   const promptText = options.promptText as string;
@@ -562,6 +616,7 @@ export function parseArgs(argv: string[], cwd = process.cwd(), env: NodeJS.Proce
     streamOutput: true,
     launchInteractive: true,
     useClipboard: false,
+    forceInteractiveInput: false,
     thinkingColor: 'cyan',
   };
 
@@ -738,6 +793,11 @@ export function parseArgs(argv: string[], cwd = process.cwd(), env: NodeJS.Proce
 
     if (arg === '--copy' || arg === '-c') {
       options.useClipboard = true;
+      continue;
+    }
+
+    if (arg === '--input') {
+      options.forceInteractiveInput = true;
       continue;
     }
 
