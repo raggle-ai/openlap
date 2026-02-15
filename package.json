@@ -2,6 +2,15 @@
   "name": "openlap",
   "version": "0.1.8",
   "description": "Request-lapping wrapper for the OpenCode CLI",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raggle-ai/openlap.git"
+  },
+  "homepage": "https://github.com/raggle-ai/openlap#readme",
+  "bugs": {
+    "url": "https://github.com/raggle-ai/openlap/issues"
+  },
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

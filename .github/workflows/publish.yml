@@ -28,7 +28,6 @@ jobs:
 
       - name: Run test suite
         run: npm test
-        continue-on-error: true
 
   publish:
     runs-on: ubuntu-latest

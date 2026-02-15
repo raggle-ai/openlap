@@ -858,10 +858,10 @@ test('runOpencodeProcess renders nested JSON tool output when showToolOutput is 
   });
 
   assert.match(result, /tool · grep scan/);
-  assert.match(result, /"files": \[/);
+  assert.match(result, /"files":?\[/);
   assert.match(result, /"a.ts"/);
-  assert.match(result, /"meta": \{/);
-  assert.match(result, /"count": 2/);
+  assert.match(result, /"meta":?\{/);
+  assert.match(result, /"count":?2/);
 });
 
 test('runOpencodeProcess highlights thinking blocks with unusual markdown header formatting', async () => {

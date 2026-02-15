@@ -129,6 +129,10 @@ Useful scripts:
 - `npm run typecheck` run TypeScript checks only
 - `npm run web` start website dev server
 
+Release process:
+
+- See `RELEASING.md` for version/tag/publish workflow.
+
 ## Website (`web/`)
 
 This repo includes the Astro site used for `openlap.dev`.
