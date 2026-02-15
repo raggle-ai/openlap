@@ -1,6 +1,6 @@
 {
   "name": "openlap",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Request-lapping wrapper for the OpenCode CLI",
   "type": "module",
   "main": "dist/index.js",
