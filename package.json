@@ -49,9 +49,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:test": "tsc -p tsconfig.test.json --noEmit",
     "lint": "npm run typecheck && npm run typecheck:test",
-    "prepare": "husky",
-    "secrets:scan": "gitleaks git --redact --config .gitleaks.toml",
-    "secrets:scan:staged": "gitleaks git --staged --redact --config .gitleaks.toml",
     "prepublishOnly": "npm run build"
   },
   "engines": {
@@ -59,7 +56,6 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "husky": "^9.1.7",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },

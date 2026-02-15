@@ -11,8 +11,6 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/openlap"><img src="https://img.shields.io/npm/v/openlap?style=flat-square" alt="npm version" /></a>
-  <a href="https://github.com/raggle-ai/openlap/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/raggle-ai/openlap/ci.yml?branch=main&style=flat-square" alt="CI status" /></a>
-  <a href="https://github.com/raggle-ai/openlap/blob/main/LICENSE"><img src="https://img.shields.io/github/license/raggle-ai/openlap?style=flat-square" alt="license" /></a>
 </p>
 
 <p align="center">
@@ -130,24 +128,6 @@ Useful scripts:
 - `npm run dev` run CLI from source (`tsx src/cli.ts`)
 - `npm run typecheck` run TypeScript checks only
 - `npm run web` start website dev server
-
-## Security Checks
-
-- CI runs Gitleaks on pushes and pull requests.
-- Local commits run a Husky `pre-commit` hook that scans staged changes with Gitleaks.
-
-Install Gitleaks locally (required for committing):
-
-```bash
-brew install gitleaks
-```
-
-Run scans manually:
-
-```bash
-npm run secrets:scan:staged
-npm run secrets:scan
-```
 
 ## Website (`web/`)
 
