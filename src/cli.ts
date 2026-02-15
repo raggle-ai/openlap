@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { stat, readFile } from 'fs/promises';
+import { stat, readFile, readdir } from 'fs/promises';
 import { readFileSync, realpathSync } from 'fs';
 import { dirname, resolve, delimiter, basename } from 'path';
 import { fileURLToPath } from 'url';
@@ -9,8 +9,20 @@ import { createInterface } from 'readline/promises';
 import { EXAMPLE_QUERIES, formatExamples } from './examples.js';
 import { resolveExampleQuery } from './example.js';
 import { getCompletionScript, isCompletionShell, type CompletionShell } from './completions.js';
-import { composePrompt, runOpencode, runOpencodeProcess, type OpencodeOutputFormat } from './opencode.js';
-import { readInteractivePromptOpenTui, type InteractivePromptContext } from './tui.js';
+import {
+  composePrompt,
+  runOpencode,
+  runOpencodeProcess,
+  type OpencodeOutputFormat,
+  type QuestionPolicy,
+  type RunTerminalState,
+} from './opencode.js';
+import {
+  readInteractivePromptOpenTui,
+  readPromptSelectionOpenTui,
+  type InteractivePromptContext,
+  type PromptTemplateChoice,
+} from './tui.js';
 
 type LogLevel = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR';
 type ThinkingColor = 'yellow' | 'cyan' | 'magenta' | 'blue' | 'gray';
@@ -29,10 +41,15 @@ interface CliOptions {
   logLevel: LogLevel;
   streamOutput: boolean;
   launchInteractive: boolean;
+  launchTui: boolean;
   useClipboard: boolean;
   forceInteractiveInput: boolean;
+  statusJson: boolean;
+  questionPolicy?: QuestionPolicy;
+  questionDefaultAnswer?: string;
   thinkingModels?: string[];
   thinkingColor: ThinkingColor;
+  promptSearchPaths?: string[];
 }
 
 interface CliConfig {
@@ -40,6 +57,7 @@ interface CliConfig {
   thinkingModels?: string[];
   thinkingColor?: ThinkingColor;
   noInteractive?: boolean;
+  promptSearchPaths?: string[];
 }
 
 interface CliEnvDefaults {
@@ -47,9 +65,10 @@ interface CliEnvDefaults {
   cwd?: string;
   thinkingModels?: string[];
   noInteractive?: boolean;
+  promptSearchPaths?: string[];
 }
 
-type CliAction = 'run' | 'help' | 'list-examples' | 'version' | 'completions' | 'doctor';
+type CliAction = 'run' | 'help' | 'list-examples' | 'version' | 'completions' | 'doctor' | 'prompt';
 
 export interface ParsedCli {
   action: CliAction;
@@ -106,6 +125,29 @@ function parseNoInteractive(value: unknown, sourceLabel: string): boolean | unde
   throw new Error(`Invalid Openlap config in ${sourceLabel}: "no-interactive" must be a boolean.`);
 }
 
+function parsePromptSearchPaths(value: unknown, sourceLabel: string): string[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value === 'string') {
+    const entries = value
+      .split(',')
+      .map(item => item.trim())
+      .filter(Boolean);
+    return entries.length > 0 ? entries : undefined;
+  }
+
+  if (Array.isArray(value)) {
+    const entries = value
+      .map(item => String(item).trim())
+      .filter(Boolean);
+    return entries.length > 0 ? entries : undefined;
+  }
+
+  throw new Error(`Invalid Openlap config in ${sourceLabel}: "prompt-search-paths" must be a string or string array.`);
+}
+
 function parseCliConfig(rawConfig: unknown, sourceLabel: string): CliConfig {
   if (!isRecord(rawConfig)) {
     throw new Error(`Invalid Openlap config in ${sourceLabel}: expected an object.`);
@@ -119,25 +161,44 @@ function parseCliConfig(rawConfig: unknown, sourceLabel: string): CliConfig {
   const thinkingModels = parseThinkingModels(rawConfig['thinking-models'] ?? rawConfig.thinkingModels, sourceLabel);
   const thinkingColor = parseThinkingColor(rawConfig['thinking-color'] ?? rawConfig.thinkingColor, sourceLabel);
   const noInteractive = parseNoInteractive(rawConfig['no-interactive'] ?? rawConfig.noInteractive, sourceLabel);
+  const promptSearchPaths = parsePromptSearchPaths(
+    rawConfig['prompt-search-paths'] ?? rawConfig.promptSearchPaths,
+    sourceLabel,
+  );
 
   return {
     model,
     thinkingModels,
     thinkingColor,
     noInteractive,
+    promptSearchPaths,
   };
 }
 
 function loadConfigFile(cwd: string): CliConfig {
-  const openlapConfigPath = resolve(cwd, '.openlap.json');
+  const dotOpenlapConfigPath = resolve(cwd, '.openlap.json');
   try {
-    const raw = readFileSync(openlapConfigPath, 'utf8');
+    const raw = readFileSync(dotOpenlapConfigPath, 'utf8');
     const parsed = JSON.parse(raw) as unknown;
     return parseCliConfig(parsed, '.openlap.json');
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
       if (error instanceof SyntaxError) {
         throw new Error('Invalid Openlap config in .openlap.json: invalid JSON.');
+      }
+      throw error;
+    }
+  }
+
+  const openlapConfigPath = resolve(cwd, 'openlap.json');
+  try {
+    const raw = readFileSync(openlapConfigPath, 'utf8');
+    const parsed = JSON.parse(raw) as unknown;
+    return parseCliConfig(parsed, 'openlap.json');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      if (error instanceof SyntaxError) {
+        throw new Error('Invalid Openlap config in openlap.json: invalid JSON.');
       }
       throw error;
     }
@@ -189,12 +250,17 @@ function loadEnvDefaults(baseCwd: string, env: NodeJS.ProcessEnv): CliEnvDefault
   const cwd = rawCwd ? resolve(baseCwd, rawCwd) : undefined;
   const thinkingModels = parseThinkingModels(env.OPENLAP_THINKING_MODELS, 'environment variable OPENLAP_THINKING_MODELS');
   const noInteractive = parseEnvBoolean(env.OPENLAP_NO_INTERACTIVE, 'OPENLAP_NO_INTERACTIVE');
+  const promptSearchPaths = parsePromptSearchPaths(
+    env.OPENLAP_PROMPT_SEARCH_PATHS,
+    'environment variable OPENLAP_PROMPT_SEARCH_PATHS',
+  );
 
   return {
     model,
     cwd,
     thinkingModels,
     noInteractive,
+    promptSearchPaths,
   };
 }
 
@@ -202,6 +268,7 @@ const HELP_TEXT = `openlap - request lapper for OpenCode CLI
 
 Usage:
   openlap
+  openlap prompt
   openlap "<prompt text>"
   echo "<prompt text>" | openlap
   openlap --file ./prompt.md --instruction "extra direction"
@@ -216,6 +283,7 @@ Options:
   -m, --model <name>      OpenCode model id
   -C, --cwd <path>        Working directory for opencode run (default: current dir)
   -c, --copy              Read prompt from clipboard
+      --launch-tui        Launch OpenCode TUI directly with combined prompt
       --input             Prompt for additional input and append it
       --example <name>    Use a built-in example query
       --list-examples     Show built-in examples
@@ -229,6 +297,9 @@ Options:
       --print-logs        Enable OpenCode logs
       --log-level <lvl>   DEBUG | INFO | WARN | ERROR
       --no-stream         Return only final output
+      --status-json       Emit run-end status as JSON to stderr
+      --question-policy   fail-fast|default-answer|abort for question tool in non-interactive runs
+      --question-default-answer  Default answer text used when --question-policy=default-answer
       --thinking-models   CSV of models that get thinking highlight
       --thinking-color    yellow|cyan|magenta|blue|gray
   -v, --version           Show version
@@ -415,6 +486,63 @@ function toInlinePreview(text: string, maxChars = 140): string {
   return `${compact.slice(0, Math.max(1, maxChars - 3)).trimEnd()}...`;
 }
 
+function resolveQuestionPolicy(options: CliOptions): QuestionPolicy | undefined {
+  if (options.questionPolicy) {
+    return options.questionPolicy;
+  }
+
+  return options.launchInteractive ? undefined : 'fail-fast';
+}
+
+function composeQuestionPolicyInstruction(defaultAnswer?: string): string {
+  const fallback = (defaultAnswer || 'Use the best reasonable default and continue without pausing for user input.').trim();
+  return [
+    'Non-interactive execution policy:',
+    '- Do not call any question/ask-user tool.',
+    `- If user input would normally be required, assume this default answer and continue: ${fallback}`,
+  ].join('\n');
+}
+
+function applyQuestionPolicyPrompt(prompt: string, policy: QuestionPolicy | undefined, defaultAnswer?: string): string {
+  if (policy !== 'default-answer') {
+    return prompt;
+  }
+
+  return `${prompt.trimEnd()}\n\n${composeQuestionPolicyInstruction(defaultAnswer)}\n`;
+}
+
+function formatTerminalState(state: RunTerminalState): string {
+  const base = `run ended: ${state.status}`;
+  const details: string[] = [];
+  if (state.tool) {
+    details.push(`tool=${state.tool}`);
+  }
+  if (state.input) {
+    details.push(`input=${toInlinePreview(state.input, 100)}`);
+  }
+  if (state.policy) {
+    details.push(`policy=${state.policy}`);
+  }
+  if (state.message) {
+    details.push(`reason=${toInlinePreview(state.message, 100)}`);
+  }
+  return details.length > 0 ? `${base} (${details.join(', ')})` : base;
+}
+
+function emitTerminalStateJson(state: RunTerminalState, sessionId: string | null): void {
+  const payload = {
+    type: 'openlap.run.terminal_state',
+    sessionID: sessionId || undefined,
+    status: state.status,
+    tool: state.tool,
+    input: state.input,
+    policy: state.policy,
+    message: state.message,
+    time: new Date().toISOString(),
+  };
+  process.stderr.write(`${JSON.stringify(payload)}\n`);
+}
+
 function showRunInputSummary(loadedPrompt: string, customInput: string): void {
   const promptLines = buildPreviewLines(loadedPrompt, 2, 120);
   if (promptLines.length > 0) {
@@ -497,6 +625,7 @@ function getPackageVersion(): string {
 }
 
 const PROMPT_TEMPLATE_ALIAS_PREFIX = '@prompt-templates/';
+const PROMPT_TEMPLATE_ALIAS_DIR = '@prompt-templates';
 
 function resolvePromptPathAlias(pathValue: string): string {
   const normalized = pathValue.replaceAll('\\', '/');
@@ -509,9 +638,159 @@ function resolvePromptPathAlias(pathValue: string): string {
     throw new Error('Invalid --file alias: use @prompt-templates/<template-file>.');
   }
 
-  const cliPath = fileURLToPath(import.meta.url);
-  const packageRoot = resolve(dirname(cliPath), '..');
+  const packageRoot = getPackageRoot();
   return resolve(packageRoot, 'prompt-templates', templatePath);
+}
+
+function getPackageRoot(): string {
+  const cliPath = fileURLToPath(import.meta.url);
+  return resolve(dirname(cliPath), '..');
+}
+
+function resolvePromptSearchPathAlias(pathValue: string, cwd: string): string {
+  const normalized = pathValue.replaceAll('\\', '/').trim();
+  if (!normalized) {
+    return cwd;
+  }
+
+  if (normalized === PROMPT_TEMPLATE_ALIAS_DIR || normalized === `${PROMPT_TEMPLATE_ALIAS_DIR}/`) {
+    return resolve(getPackageRoot(), 'prompt-templates');
+  }
+
+  if (normalized.startsWith(PROMPT_TEMPLATE_ALIAS_PREFIX)) {
+    const templatePath = normalized.slice(PROMPT_TEMPLATE_ALIAS_PREFIX.length).trim();
+    if (templatePath.includes('..')) {
+      throw new Error('Invalid prompt-search-paths alias: use @prompt-templates/<path>.');
+    }
+    return resolve(getPackageRoot(), 'prompt-templates', templatePath);
+  }
+
+  return resolve(cwd, pathValue);
+}
+
+function renderMarkdownForPromptPreview(markdownText: string): string {
+  return markdownText
+    .replace(/\r\n/g, '\n')
+    .replace(/^```[\s\S]*?```$/gm, block => block.replace(/^```\w*\n?/, '').replace(/\n?```$/, ''))
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/^>\s?/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .trim();
+}
+
+function toPromptPreview(markdownText: string, maxLines = 8, maxChars = 700): string {
+  const rendered = renderMarkdownForPromptPreview(markdownText);
+  if (!rendered) {
+    return '(No preview available)';
+  }
+
+  const sliced = rendered.slice(0, maxChars);
+  const lines = sliced.split('\n');
+  if (lines.length > maxLines) {
+    return `${lines.slice(0, maxLines).join('\n')}\n...`;
+  }
+  if (rendered.length > maxChars) {
+    return `${sliced}...`;
+  }
+  return sliced;
+}
+
+function toPromptTitle(markdownText: string, fallbackLabel: string): string {
+  const heading = markdownText.match(/^#\s+(.+)$/m)?.[1]?.trim();
+  if (heading) {
+    return heading;
+  }
+
+  const base = fallbackLabel.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ').trim();
+  if (!base) {
+    return 'Prompt';
+  }
+  return base
+    .split(/\s+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+async function collectMarkdownPromptFiles(pathValue: string): Promise<string[]> {
+  const entry = await stat(pathValue);
+  if (entry.isFile()) {
+    if (pathValue.toLowerCase().endsWith('.md')) {
+      return [pathValue];
+    }
+    return [];
+  }
+
+  if (!entry.isDirectory()) {
+    return [];
+  }
+
+  const collected: string[] = [];
+  const stack: string[] = [pathValue];
+
+  while (stack.length > 0) {
+    const currentDir = stack.pop() as string;
+    const entries = await readdir(currentDir, { withFileTypes: true });
+    for (const item of entries) {
+      const itemPath = resolve(currentDir, item.name);
+      if (item.isDirectory()) {
+        stack.push(itemPath);
+        continue;
+      }
+
+      if (item.isFile() && item.name.toLowerCase().endsWith('.md')) {
+        collected.push(itemPath);
+      }
+    }
+  }
+
+  return collected;
+}
+
+async function loadPromptChoices(searchPaths: string[] | undefined, cwd: string): Promise<PromptTemplateChoice[]> {
+  if (!searchPaths || searchPaths.length === 0) {
+    return [];
+  }
+
+  const files = new Set<string>();
+  for (const searchPath of searchPaths) {
+    const resolvedPath = resolvePromptSearchPathAlias(searchPath, cwd);
+    let discovered: string[];
+    try {
+      discovered = await collectMarkdownPromptFiles(resolvedPath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Invalid prompt-search-paths entry "${searchPath}": ${message}. Use an existing markdown file or directory.`,
+      );
+    }
+    for (const filePath of discovered) {
+      files.add(filePath);
+    }
+  }
+
+  const sortedFiles = Array.from(files).sort((a, b) => {
+    const aName = basename(a).toLowerCase();
+    const bName = basename(b).toLowerCase();
+    if (aName !== bName) {
+      return aName.localeCompare(bName);
+    }
+    return a.localeCompare(b);
+  });
+  const choices: PromptTemplateChoice[] = [];
+  for (const filePath of sortedFiles) {
+    const markdown = await readFile(filePath, 'utf8');
+    const relativeLabel = filePath.startsWith(cwd) ? filePath.slice(cwd.length + 1) : filePath;
+    choices.push({
+      path: filePath,
+      label: relativeLabel,
+      title: toPromptTitle(markdown, basename(filePath)),
+      preview: toPromptPreview(markdown),
+    });
+  }
+
+  return choices;
 }
 
 async function main(): Promise<void> {
@@ -548,6 +827,44 @@ async function main(): Promise<void> {
       return;
     }
 
+    if (action === 'prompt') {
+      await ensureDirectoryPath(options.cwd, '--cwd');
+      const promptChoices = await loadPromptChoices(options.promptSearchPaths, options.cwd);
+      if (promptChoices.length === 0) {
+        process.stderr.write(
+          'No prompt templates found. Configure openlap.json with "prompt-search-paths" pointing to markdown files or directories.\n',
+        );
+        process.exitCode = 1;
+        return;
+      }
+      if (!process.stdin.isTTY || !process.stdout.isTTY) {
+        process.stderr.write('Prompt selector requires a TTY terminal. Run `openlap --file <path>` in non-interactive environments.\n');
+        process.exitCode = 1;
+        return;
+      }
+
+      const selectedPromptPath = await readPromptSelectionOpenTui(promptChoices);
+      if (!selectedPromptPath) {
+        process.stderr.write('Prompt selection cancelled.\n');
+        process.exitCode = 1;
+        return;
+      }
+
+      const basePrompt = await readFile(selectedPromptPath, 'utf8');
+      const customInput = await readInteractivePrompt('Append input: ', {
+        mainInput: basePrompt,
+        mainInputLabel: basename(selectedPromptPath),
+        systemPrompts: options.instruction ? [options.instruction] : [],
+      });
+
+      options.promptText = customInput ? appendAdditionalInput(basePrompt, customInput) : basePrompt;
+      options.promptFilePath = undefined;
+
+      if (customInput) {
+        showRunInputSummary(basePrompt, customInput);
+      }
+    }
+
     await ensureDirectoryPath(options.cwd, '--cwd');
 
     if (!options.promptText && !options.promptFilePath) {
@@ -581,6 +898,13 @@ async function main(): Promise<void> {
     }
 
     let sessionId: string | null = null;
+    const effectiveQuestionPolicy = resolveQuestionPolicy(options);
+    const onTerminalState = (state: RunTerminalState) => {
+      showStatusLine(formatTerminalState(state));
+      if (options.statusJson) {
+        emitTerminalStateJson(state, sessionId);
+      }
+    };
 
     if (options.promptFilePath) {
       const promptPath = resolve(resolvePromptPathAlias(options.promptFilePath));
@@ -601,8 +925,14 @@ async function main(): Promise<void> {
           return;
         }
 
-        const fullPrompt = composePrompt(appendAdditionalInput(basePrompt, supplementalInput), options.instruction);
+        const combinedPrompt = composePrompt(appendAdditionalInput(basePrompt, supplementalInput), options.instruction);
+        const fullPrompt = applyQuestionPolicyPrompt(combinedPrompt, effectiveQuestionPolicy, options.questionDefaultAnswer);
         showRunInputSummary(basePrompt, supplementalInput);
+        if (options.launchTui) {
+          await launchTuiWithPrompt(options, fullPrompt);
+          return;
+        }
+
         showStatusLine('Starting OpenCode run');
         const output = await runOpencodeProcess({
           promptText: fullPrompt,
@@ -617,6 +947,9 @@ async function main(): Promise<void> {
           streamOutput: options.streamOutput,
           thinkingModels: options.thinkingModels,
           thinkingColor: options.thinkingColor,
+          questionPolicy: effectiveQuestionPolicy,
+          questionDefaultAnswer: options.questionDefaultAnswer,
+          onTerminalState,
           onSessionId: value => {
             sessionId = value;
           },
@@ -630,9 +963,20 @@ async function main(): Promise<void> {
         return;
       }
 
+      if (options.launchTui) {
+        const basePrompt = await readFile(promptPath, 'utf8');
+        const combinedPrompt = composePrompt(basePrompt, options.instruction);
+        const fullPrompt = applyQuestionPolicyPrompt(combinedPrompt, effectiveQuestionPolicy, options.questionDefaultAnswer);
+        await launchTuiWithPrompt(options, fullPrompt);
+        return;
+      }
+
       const output = await runOpencode({
         promptFilePath: promptPath,
-        instruction: options.instruction,
+        instruction:
+          effectiveQuestionPolicy === 'default-answer'
+            ? [options.instruction, composeQuestionPolicyInstruction(options.questionDefaultAnswer)].filter(Boolean).join('\n\n')
+            : options.instruction,
         cwd: options.cwd,
         model: options.model,
         format: options.outputFormat,
@@ -644,6 +988,9 @@ async function main(): Promise<void> {
         streamOutput: options.streamOutput,
         thinkingModels: options.thinkingModels,
         thinkingColor: options.thinkingColor,
+        questionPolicy: effectiveQuestionPolicy,
+        questionDefaultAnswer: options.questionDefaultAnswer,
+        onTerminalState,
         onSessionId: value => {
           sessionId = value;
         },
@@ -695,7 +1042,13 @@ async function main(): Promise<void> {
     }
 
     const promptText = options.promptText as string;
-    const fullPrompt = composePrompt(promptText, options.instruction);
+    const combinedPrompt = composePrompt(promptText, options.instruction);
+    const fullPrompt = applyQuestionPolicyPrompt(combinedPrompt, effectiveQuestionPolicy, options.questionDefaultAnswer);
+
+    if (options.launchTui) {
+      await launchTuiWithPrompt(options, fullPrompt);
+      return;
+    }
 
     const output = await runOpencodeProcess({
       promptText: fullPrompt,
@@ -710,6 +1063,9 @@ async function main(): Promise<void> {
       streamOutput: options.streamOutput,
       thinkingModels: options.thinkingModels,
       thinkingColor: options.thinkingColor,
+      questionPolicy: effectiveQuestionPolicy,
+      questionDefaultAnswer: options.questionDefaultAnswer,
+      onTerminalState,
       onSessionId: value => {
         sessionId = value;
       },
@@ -738,8 +1094,10 @@ export function parseArgs(argv: string[], cwd = process.cwd(), env: NodeJS.Proce
     logLevel: 'INFO',
     streamOutput: true,
     launchInteractive: true,
+    launchTui: false,
     useClipboard: false,
     forceInteractiveInput: false,
+    statusJson: false,
     thinkingColor: 'cyan',
   };
 
@@ -751,6 +1109,9 @@ export function parseArgs(argv: string[], cwd = process.cwd(), env: NodeJS.Proce
   }
   if (envDefaults.noInteractive !== undefined) {
     options.launchInteractive = !envDefaults.noInteractive;
+  }
+  if (envDefaults.promptSearchPaths) {
+    options.promptSearchPaths = envDefaults.promptSearchPaths;
   }
 
   if (fileConfig.model) {
@@ -764,6 +1125,9 @@ export function parseArgs(argv: string[], cwd = process.cwd(), env: NodeJS.Proce
   }
   if (fileConfig.noInteractive !== undefined) {
     options.launchInteractive = !fileConfig.noInteractive;
+  }
+  if (fileConfig.promptSearchPaths) {
+    options.promptSearchPaths = fileConfig.promptSearchPaths;
   }
 
   const freeArgs: string[] = [];
@@ -914,6 +1278,11 @@ export function parseArgs(argv: string[], cwd = process.cwd(), env: NodeJS.Proce
       continue;
     }
 
+    if (arg === '--launch-tui') {
+      options.launchTui = true;
+      continue;
+    }
+
     if (arg === '--copy' || arg === '-c') {
       options.useClipboard = true;
       continue;
@@ -939,6 +1308,34 @@ export function parseArgs(argv: string[], cwd = process.cwd(), env: NodeJS.Proce
 
     if (arg === '--no-stream') {
       options.streamOutput = false;
+      continue;
+    }
+
+    if (arg === '--status-json') {
+      options.statusJson = true;
+      continue;
+    }
+
+    if (arg === '--question-policy') {
+      const value = argv[i + 1] as QuestionPolicy | undefined;
+      if (!value) {
+        throw new Error('Missing value for --question-policy');
+      }
+      i += 1;
+      if (!['fail-fast', 'default-answer', 'abort'].includes(value)) {
+        throw new Error('Invalid --question-policy. Use fail-fast, default-answer, or abort.');
+      }
+      options.questionPolicy = value;
+      continue;
+    }
+
+    if (arg === '--question-default-answer') {
+      const value = argv[i + 1];
+      if (!value) {
+        throw new Error('Missing value for --question-default-answer');
+      }
+      i += 1;
+      options.questionDefaultAnswer = value;
       continue;
     }
 
@@ -977,6 +1374,11 @@ export function parseArgs(argv: string[], cwd = process.cwd(), env: NodeJS.Proce
 
   if (freeArgs.length > 0 && inputMode) {
     throw new Error('Conflicting input: pass exactly one of --example, --file, or inline prompt text.');
+  }
+
+  if (freeArgs.length === 1 && freeArgs[0] === 'prompt' && !inputMode) {
+    action = 'prompt';
+    return { action, options };
   }
 
   if (freeArgs.length > 0 && !options.promptText) {
@@ -1124,6 +1526,34 @@ async function maybeLaunchInteractive(options: CliOptions, sessionId: string | n
         return;
       }
       rejectPromise(new Error(`opencode interactive exited with code ${code}`));
+    });
+  });
+}
+
+async function launchTuiWithPrompt(options: CliOptions, fullPrompt: string): Promise<void> {
+  const isInsideOpenCodeUi = process.env.OPENCODE === '1';
+  if (!process.stdin.isTTY || !process.stdout.isTTY || isInsideOpenCodeUi) {
+    throw new Error('`--launch-tui` requires a local TTY terminal outside OpenCode UI.');
+  }
+
+  const args: string[] = ['--prompt', fullPrompt];
+  if (options.model) {
+    args.push('-m', options.model);
+  }
+
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    const child = spawn('opencode', args, {
+      cwd: options.cwd,
+      stdio: 'inherit',
+    });
+
+    child.on('error', rejectPromise);
+    child.on('close', code => {
+      if (code === 0 || code === null) {
+        resolvePromise();
+        return;
+      }
+      rejectPromise(new Error(`opencode TUI exited with code ${code}`));
     });
   });
 }

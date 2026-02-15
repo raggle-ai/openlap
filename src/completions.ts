@@ -22,9 +22,13 @@ const ALL_FLAGS = [
   '--no-pretty',
   '--show-tool-output',
   '--no-interactive',
+  '--launch-tui',
   '--print-logs',
   '--log-level',
   '--no-stream',
+  '--status-json',
+  '--question-policy',
+  '--question-default-answer',
   '--thinking-models',
   '--thinking-color',
   '-v',
@@ -91,6 +95,10 @@ _openlap_completions() {
       COMPREPLY=( $(compgen -W "\${levels}" -- "\${cur}") )
       return
       ;;
+    --question-policy)
+      COMPREPLY=( $(compgen -W "fail-fast default-answer abort" -- "\${cur}") )
+      return
+      ;;
     --thinking-color)
       COMPREPLY=( $(compgen -W "\${colors}" -- "\${cur}") )
       return
@@ -132,8 +140,12 @@ _openlap() {
     '--no-pretty[Disable pretty event rendering]' \\
     '--show-tool-output[Print tool output lines]' \\
     '--no-interactive[Skip launching interactive OpenCode after run]' \\
+    '--launch-tui[Launch OpenCode TUI directly with combined prompt]' \\
     '--print-logs[Enable OpenCode logs]' \\
     '--no-stream[Return only final output]' \\
+    '--status-json[Emit run-end status as JSON to stderr]' \\
+    '--question-policy[Question tool policy in non-interactive runs]:policy:(fail-fast default-answer abort)' \\
+    '--question-default-answer[Default answer for question policy]:answer:' \\
     '(-c --copy)'{-c,--copy}'[Read prompt from clipboard]' \\
     '(-f --file)'{-f,--file}'[Read prompt text from a file]:file:_files' \\
     '(-i --instruction)'{-i,--instruction}'[Append extra instruction to prompt]:instruction:' \\
@@ -173,9 +185,13 @@ complete -c openlap -l raw -d 'Disable JSON output format'
 complete -c openlap -l no-pretty -d 'Disable pretty event rendering'
 complete -c openlap -l show-tool-output -d 'Print tool output lines'
 complete -c openlap -l no-interactive -d 'Skip launching interactive OpenCode after run'
+complete -c openlap -l launch-tui -d 'Launch OpenCode TUI directly with combined prompt'
 complete -c openlap -l print-logs -d 'Enable OpenCode logs'
 complete -c openlap -l log-level -r -a 'DEBUG INFO WARN ERROR' -d 'OpenCode log level'
 complete -c openlap -l no-stream -d 'Return only final output'
+complete -c openlap -l status-json -d 'Emit run-end status as JSON to stderr'
+complete -c openlap -l question-policy -r -a 'fail-fast default-answer abort' -d 'Question tool policy in non-interactive runs'
+complete -c openlap -l question-default-answer -r -d 'Default answer for question policy'
 complete -c openlap -l thinking-models -r -d 'CSV of models that get thinking highlight'
 complete -c openlap -l thinking-color -r -a 'yellow cyan magenta blue gray' -d 'Thinking highlight color'
 `;

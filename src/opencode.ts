@@ -16,12 +16,24 @@ export interface RunOpencodeOptions {
   onSessionId?: (sessionId: string) => void;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
+  onTerminalState?: (state: RunTerminalState) => void;
   thinkingModels?: string[];
   thinkingColor?: ThinkingColor;
+  questionPolicy?: QuestionPolicy;
+  questionDefaultAnswer?: string;
 }
 
 export type ThinkingColor = 'yellow' | 'cyan' | 'magenta' | 'blue' | 'gray';
 export type OpencodeOutputFormat = 'pretty' | 'raw' | 'json-events' | 'json-final' | 'jsonl';
+export type QuestionPolicy = 'fail-fast' | 'default-answer' | 'abort';
+
+export interface RunTerminalState {
+  status: 'completed' | 'blocked' | 'waiting-for-user' | 'error';
+  tool?: string;
+  input?: string;
+  policy?: QuestionPolicy;
+  message?: string;
+}
 
 export async function runOpencode(options: RunOpencodeOptions): Promise<string> {
   const promptContent = await readFile(options.promptFilePath, 'utf-8');
@@ -51,6 +63,9 @@ export async function runOpencode(options: RunOpencodeOptions): Promise<string> 
     onStderr: options.onStderr,
     thinkingModels: options.thinkingModels,
     thinkingColor: options.thinkingColor,
+    questionPolicy: options.questionPolicy,
+    questionDefaultAnswer: options.questionDefaultAnswer,
+    onTerminalState: options.onTerminalState,
   });
 }
 
@@ -70,9 +85,12 @@ export interface RunOpencodeProcessOptions {
   onSessionId?: (sessionId: string) => void;
   onStdout?: (chunk: string) => void;
   onStderr?: (chunk: string) => void;
+  onTerminalState?: (state: RunTerminalState) => void;
   signalSource?: SignalSource;
   thinkingModels?: string[];
   thinkingColor?: ThinkingColor;
+  questionPolicy?: QuestionPolicy;
+  questionDefaultAnswer?: string;
 }
 
 export interface SignalSource {
@@ -107,6 +125,7 @@ export function runOpencodeProcess(options: RunOpencodeProcessOptions): Promise<
     const shouldCaptureRawStdout = !streamOutput || outputFormat !== 'pretty';
     const thinkingColor = THINKING_COLOR_ANSI[options.thinkingColor || 'yellow'];
     const highlightThinking = shouldHighlightThinking(options.model, options.thinkingModels);
+    const questionPolicy = options.questionPolicy;
 
     const args: string[] = [];
 
@@ -136,9 +155,22 @@ export function runOpencodeProcess(options: RunOpencodeProcessOptions): Promise<
     let stderrText = '';
     let stdoutBuffer = '';
     let sessionProbeBuffer = '';
+    let questionPolicyBuffer = '';
     let sessionId: string | null = null;
     let sessionErrorMessage: string | null = null;
     const renderedOutputLines: string[] = [];
+    let terminalStateEmitted = false;
+    let pendingQuestionArtifact: { tool: string; input: string } | null = null;
+    let blockedArtifact: { tool: string; input: string } | null = null;
+    let stoppedByQuestionPolicy = false;
+
+    const emitTerminalState = (state: RunTerminalState) => {
+      if (terminalStateEmitted) {
+        return;
+      }
+      terminalStateEmitted = true;
+      options.onTerminalState?.(state);
+    };
 
     const maybeEmitSessionId = (line: string) => {
       if (!formatJson || sessionId) {
@@ -199,6 +231,86 @@ export function runOpencodeProcess(options: RunOpencodeProcessOptions): Promise<
       signalSource.off('SIGTERM', forwardSignal);
     };
 
+    const maybeHandleQuestionPolicy = (
+      part: {
+        tool?: string;
+        state?: { title?: string; status?: string; input?: unknown; output?: unknown };
+      } | undefined,
+    ) => {
+      const tool = (part?.tool || '').toLowerCase();
+      if (!isQuestionTool(tool)) {
+        return;
+      }
+
+      const status = typeof part?.state?.status === 'string' ? part.state.status.toLowerCase() : 'running';
+      const artifact = {
+        tool: tool || 'question',
+        input: summarizeBlockingInput(part?.state?.input ?? part?.state?.title),
+      };
+
+      if (status === 'running') {
+        pendingQuestionArtifact = artifact;
+
+        if ((questionPolicy === 'fail-fast' || questionPolicy === 'abort') && !stoppedByQuestionPolicy) {
+          stoppedByQuestionPolicy = true;
+          blockedArtifact = artifact;
+          if (questionPolicy === 'fail-fast') {
+            sessionErrorMessage =
+              `Blocked on interactive question tool (${artifact.tool}) in non-interactive mode. ` +
+              `Input: ${artifact.input}. Configure --question-policy default-answer|abort or provide an interactive session.`;
+          }
+          child.kill('SIGTERM');
+        }
+        return;
+      }
+
+      pendingQuestionArtifact = null;
+    };
+
+    const inspectLineForQuestionPolicy = (line: string) => {
+      if (!line.trim()) {
+        return;
+      }
+
+      try {
+        const event = JSON.parse(line) as {
+          type?: string;
+          part?: {
+            tool?: string;
+            state?: { title?: string; status?: string; input?: unknown; output?: unknown };
+          };
+        };
+        if (event.type === 'tool_use' || event.type === 'tool') {
+          maybeHandleQuestionPolicy(event.part);
+        }
+      } catch {
+        // Ignore malformed JSON lines while enforcing question policy.
+      }
+    };
+
+    const consumeQuestionPolicyBuffer = (final = false) => {
+      if (!formatJson) {
+        return;
+      }
+
+      let buffer = questionPolicyBuffer;
+      let newlineIndex = buffer.indexOf('\n');
+
+      while (newlineIndex >= 0) {
+        const line = buffer.slice(0, newlineIndex).replace(/\r$/, '');
+        inspectLineForQuestionPolicy(line);
+        buffer = buffer.slice(newlineIndex + 1);
+        newlineIndex = buffer.indexOf('\n');
+      }
+
+      if (final && buffer.length > 0) {
+        inspectLineForQuestionPolicy(buffer.replace(/\r$/, ''));
+        buffer = '';
+      }
+
+      questionPolicyBuffer = buffer;
+    };
+
     signalSource.on('SIGINT', forwardSignal);
     signalSource.on('SIGTERM', forwardSignal);
 
@@ -213,12 +325,13 @@ export function runOpencodeProcess(options: RunOpencodeProcessOptions): Promise<
           part?: {
             text?: string;
             tool?: string;
-            state?: { title?: string; input?: unknown; output?: unknown };
+            state?: { title?: string; status?: string; input?: unknown; output?: unknown };
           };
           error?: { message?: string };
         };
 
-        if (event.type === 'tool_use') {
+        if (event.type === 'tool_use' || event.type === 'tool') {
+          maybeHandleQuestionPolicy(event.part);
           const lines = renderToolUseLines(event.part, options.showToolOutput ?? false);
           for (const renderedToolLine of lines) {
             appendRenderedLine(renderedToolLine);
@@ -293,6 +406,7 @@ export function runOpencodeProcess(options: RunOpencodeProcessOptions): Promise<
       while (newlineIndex >= 0) {
         const line = buffer.slice(0, newlineIndex).replace(/\r$/, '');
         maybeEmitSessionId(line);
+        inspectLineForQuestionPolicy(line);
         if (prettyEvents && formatJson) {
           writePrettyEventLine(line);
         } else {
@@ -304,6 +418,7 @@ export function runOpencodeProcess(options: RunOpencodeProcessOptions): Promise<
 
       if (final && buffer.length > 0) {
         maybeEmitSessionId(buffer.replace(/\r$/, ''));
+        inspectLineForQuestionPolicy(buffer.replace(/\r$/, ''));
         if (prettyEvents && formatJson) {
           writePrettyEventLine(buffer.replace(/\r$/, ''));
         } else {
@@ -319,6 +434,8 @@ export function runOpencodeProcess(options: RunOpencodeProcessOptions): Promise<
       const text = chunk.toString();
       sessionProbeBuffer += text;
       consumeSessionProbeBuffer();
+      questionPolicyBuffer += text;
+      consumeQuestionPolicyBuffer();
       if (shouldCaptureRawStdout) {
         stdoutText += text;
       }
@@ -342,6 +459,12 @@ export function runOpencodeProcess(options: RunOpencodeProcessOptions): Promise<
       cleanupSignalHandlers();
       const err = error as NodeJS.ErrnoException;
       if (err.code === 'ENOENT') {
+        emitTerminalState({
+          status: 'error',
+          message:
+            `Could not find "${command}" in PATH. Install OpenCode CLI from https://opencode.ai, ` +
+            'then verify the binary is available (try: opencode --version, which opencode, or npm link).',
+        });
         reject(
           new Error(
             `Could not find "${command}" in PATH. Install OpenCode CLI from https://opencode.ai, then verify the binary is available (try: opencode --version, which opencode, or npm link).`,
@@ -349,6 +472,7 @@ export function runOpencodeProcess(options: RunOpencodeProcessOptions): Promise<
         );
         return;
       }
+      emitTerminalState({ status: 'error', message: err.message || 'Failed to launch opencode process.' });
       reject(error);
     });
 
@@ -361,8 +485,20 @@ export function runOpencodeProcess(options: RunOpencodeProcessOptions): Promise<
         flushStdoutBuffer(true);
       }
       consumeSessionProbeBuffer(true);
+      consumeQuestionPolicyBuffer(true);
 
       if (sessionErrorMessage) {
+        if (blockedArtifact) {
+          emitTerminalState({
+            status: 'blocked',
+            tool: blockedArtifact.tool,
+            input: blockedArtifact.input,
+            policy: questionPolicy,
+            message: sessionErrorMessage,
+          });
+        } else {
+          emitTerminalState({ status: 'error', message: sessionErrorMessage });
+        }
         reject(new Error(sessionErrorMessage));
         return;
       }
@@ -370,12 +506,55 @@ export function runOpencodeProcess(options: RunOpencodeProcessOptions): Promise<
       if (!streamOutput && formatJson && prettyEvents) {
         const parsedErrorMessage = extractEventError(stdoutText);
         if (parsedErrorMessage) {
+          emitTerminalState({ status: 'error', message: parsedErrorMessage });
           reject(new Error(parsedErrorMessage));
           return;
         }
       }
 
       if (code === 0) {
+        if (blockedArtifact) {
+          emitTerminalState({
+            status: 'blocked',
+            tool: blockedArtifact.tool,
+            input: blockedArtifact.input,
+            policy: questionPolicy,
+          });
+        } else if (pendingQuestionArtifact) {
+          emitTerminalState({
+            status: 'waiting-for-user',
+            tool: pendingQuestionArtifact.tool,
+            input: pendingQuestionArtifact.input,
+            policy: questionPolicy,
+          });
+        } else {
+          emitTerminalState({ status: 'completed' });
+        }
+
+        if (formatJson && prettyEvents) {
+          if (streamOutput) {
+            resolve(renderedOutputLines.join('\n').trim());
+            return;
+          }
+          resolve(renderPrettyEventsToText(stdoutText, options.showToolOutput ?? false));
+          return;
+        }
+        if (outputFormat === 'json-final') {
+          resolve(renderJsonFinalOutput(stdoutText));
+          return;
+        }
+        resolve(stdoutText.trim());
+        return;
+      }
+
+      if (stoppedByQuestionPolicy && blockedArtifact && questionPolicy === 'abort') {
+        emitTerminalState({
+          status: 'blocked',
+          tool: blockedArtifact.tool,
+          input: blockedArtifact.input,
+          policy: questionPolicy,
+          message: 'Run aborted because question tool requires user input in non-interactive mode.',
+        });
         if (formatJson && prettyEvents) {
           if (streamOutput) {
             resolve(renderedOutputLines.join('\n').trim());
@@ -393,6 +572,10 @@ export function runOpencodeProcess(options: RunOpencodeProcessOptions): Promise<
       }
 
       const detail = stderrText.trim();
+      emitTerminalState({
+        status: 'error',
+        message: detail ? `opencode exited with code ${code}: ${detail}` : `opencode exited with code ${code}`,
+      });
       reject(new Error(detail ? `opencode exited with code ${code}: ${detail}` : `opencode exited with code ${code}`));
     });
   });
@@ -670,4 +853,17 @@ function toTitleCaseWord(value: string): string {
     return value;
   }
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function isQuestionTool(toolName: string): boolean {
+  const normalized = toolName.trim().toLowerCase();
+  return normalized === 'question' || normalized === 'ask-user' || normalized === 'ask_user';
+}
+
+function summarizeBlockingInput(value: unknown): string {
+  const raw = stringifyUnknown(value).replace(/\s+/g, ' ').trim();
+  if (!raw) {
+    return '(empty input)';
+  }
+  return collapseToMax(raw, 160);
 }

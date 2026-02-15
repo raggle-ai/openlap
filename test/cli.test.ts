@@ -50,6 +50,11 @@ test('parseArgs returns doctor action', () => {
   assert.equal(parsed.action, 'doctor');
 });
 
+test('parseArgs returns prompt action for prompt command', () => {
+  const parsed = parseArgs(['prompt']);
+  assert.equal(parsed.action, 'prompt');
+});
+
 test('parseArgs doctor short-circuits later unknown flags', () => {
   const parsed = parseArgs(['--doctor', '--unknown-flag']);
   assert.equal(parsed.action, 'doctor');
@@ -75,9 +80,35 @@ test('parseArgs allows disabling interactive handoff', () => {
   assert.equal(parsed.options.launchInteractive, false);
 });
 
+test('parseArgs supports launching OpenCode TUI directly', () => {
+  const parsed = parseArgs(['--launch-tui', 'review this repo']);
+  assert.equal(parsed.options.launchTui, true);
+});
+
 test('parseArgs supports --input to append interactive input', () => {
   const parsed = parseArgs(['--file', './prompt.md', '--input']);
   assert.equal(parsed.options.forceInteractiveInput, true);
+});
+
+test('parseArgs supports --question-policy and --question-default-answer', () => {
+  const parsed = parseArgs([
+    '--question-policy',
+    'default-answer',
+    '--question-default-answer',
+    'Use francis@limitless.io',
+    'review this repo',
+  ]);
+  assert.equal(parsed.options.questionPolicy, 'default-answer');
+  assert.equal(parsed.options.questionDefaultAnswer, 'Use francis@limitless.io');
+});
+
+test('parseArgs supports --status-json', () => {
+  const parsed = parseArgs(['--status-json', 'review this repo']);
+  assert.equal(parsed.options.statusJson, true);
+});
+
+test('parseArgs validates --question-policy value', () => {
+  assert.throws(() => parseArgs(['--question-policy', 'ask']), /Invalid --question-policy/i);
 });
 
 test('appendAdditionalInput combines base prompt and appended input', () => {
@@ -166,6 +197,21 @@ test('parseArgs loads defaults from .openlap.json', async () => {
   });
 });
 
+test('parseArgs loads prompt-search-paths from openlap.json', async () => {
+  await withTempDir(async dir => {
+    await writeFile(
+      join(dir, 'openlap.json'),
+      JSON.stringify({
+        'prompt-search-paths': ['@prompt-templates/', './prompts'],
+      }),
+      'utf8',
+    );
+
+    const parsed = parseArgs(['review this repo'], dir);
+    assert.deepEqual(parsed.options.promptSearchPaths, ['@prompt-templates/', './prompts']);
+  });
+});
+
 test('parseArgs loads defaults from package.json openlap config', async () => {
   await withTempDir(async dir => {
     await writeFile(
@@ -206,6 +252,28 @@ test('parseArgs prefers .openlap.json over package.json openlap config', async (
       join(dir, '.openlap.json'),
       JSON.stringify({
         model: 'opencode/from-dotfile',
+      }),
+      'utf8',
+    );
+
+    const parsed = parseArgs(['review this repo'], dir);
+    assert.equal(parsed.options.model, 'opencode/from-dotfile');
+  });
+});
+
+test('parseArgs prefers .openlap.json over openlap.json', async () => {
+  await withTempDir(async dir => {
+    await writeFile(
+      join(dir, '.openlap.json'),
+      JSON.stringify({
+        model: 'opencode/from-dotfile',
+      }),
+      'utf8',
+    );
+    await writeFile(
+      join(dir, 'openlap.json'),
+      JSON.stringify({
+        model: 'opencode/from-openlap-json',
       }),
       'utf8',
     );
@@ -266,6 +334,16 @@ test('parseArgs loads defaults from OPENLAP_* environment variables', () => {
   assert.equal(parsed.options.model, 'openai/gpt-5.3-codex');
   assert.deepEqual(parsed.options.thinkingModels, ['openai/gpt-5.3-codex', 'opencode/big-pickle']);
   assert.equal(parsed.options.launchInteractive, false);
+});
+
+test('parseArgs loads OPENLAP_PROMPT_SEARCH_PATHS', async () => {
+  await withTempDir(async dir => {
+    const parsed = parseArgs(['review this repo'], dir, {
+      OPENLAP_PROMPT_SEARCH_PATHS: '@prompt-templates/,./prompts',
+    });
+
+    assert.deepEqual(parsed.options.promptSearchPaths, ['@prompt-templates/', './prompts']);
+  });
 });
 
 test('parseArgs lets config override environment defaults', async () => {

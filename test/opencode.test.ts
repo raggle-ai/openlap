@@ -718,6 +718,115 @@ test('runOpencodeProcess handles tool_use with empty state', async () => {
   assert.equal(result, 'tool · bash');
 });
 
+test('runOpencodeProcess fail-fast policy blocks on running question tool', async () => {
+  const child = createMockChild(mock => {
+    setImmediate(() => {
+      mock.stdout.emit(
+        'data',
+        Buffer.from('{"type":"tool_use","part":{"tool":"question","state":{"status":"running","input":{"question":"Need email?"}}}}\n'),
+      );
+      mock.emit('close', 0);
+    });
+  });
+  const spawnImpl = spawnFromChild(child);
+
+  const terminalStateRef: { value?: { status: string; tool?: string; input?: string } } = {};
+  await assert.rejects(
+    () =>
+      runOpencodeProcess({
+        promptText: 'hello',
+        cwd: process.cwd(),
+        spawnImpl,
+        streamOutput: false,
+        formatJson: true,
+        prettyEvents: true,
+        questionPolicy: 'fail-fast',
+        onTerminalState: state => {
+          terminalStateRef.value = state;
+        },
+      }),
+    /Blocked on interactive question tool/i,
+  );
+
+  assert.deepEqual(child.killSignals, ['SIGTERM']);
+  const terminalState = terminalStateRef.value;
+  assert.ok(terminalState);
+  assert.equal(terminalState.status, 'blocked');
+  assert.equal(terminalState.tool, 'question');
+  assert.match(terminalState.input || '', /Need email\?/);
+});
+
+test('runOpencodeProcess abort policy stops on running question tool without throwing', async () => {
+  const child = createMockChild(mock => {
+    setImmediate(() => {
+      mock.stdout.emit(
+        'data',
+        Buffer.from('{"type":"tool_use","part":{"tool":"question","state":{"status":"running","input":{"question":"Need email?"}}}}\n'),
+      );
+      mock.emit('close', 0);
+    });
+  });
+  const spawnImpl = spawnFromChild(child);
+
+  const terminalStateRef: { value?: { status: string; tool?: string; input?: string } } = {};
+  const result = await runOpencodeProcess({
+    promptText: 'hello',
+    cwd: process.cwd(),
+    spawnImpl,
+    streamOutput: false,
+    formatJson: true,
+    prettyEvents: true,
+    questionPolicy: 'abort',
+    onTerminalState: state => {
+      terminalStateRef.value = state;
+    },
+  });
+
+  assert.deepEqual(child.killSignals, ['SIGTERM']);
+  assert.equal(result, 'tool · question {"question":"Need email?"}');
+  const terminalState = terminalStateRef.value;
+  assert.ok(terminalState);
+  assert.equal(terminalState.status, 'blocked');
+  assert.equal(terminalState.tool, 'question');
+});
+
+test('runOpencodeProcess default-answer policy completes when question tool resolves', async () => {
+  const child = createMockChild(mock => {
+    setImmediate(() => {
+      mock.stdout.emit(
+        'data',
+        Buffer.from(
+          '{"type":"tool_use","part":{"tool":"question","state":{"status":"running","input":{"question":"Need email?"}}}}\n' +
+            '{"type":"tool_use","part":{"tool":"question","state":{"status":"completed","output":{"answer":"Use default"}}}}\n' +
+            '{"type":"text","part":{"text":"sent"}}\n',
+        ),
+      );
+      mock.emit('close', 0);
+    });
+  });
+  const spawnImpl = spawnFromChild(child);
+
+  const terminalStateRef: { value?: { status: string; tool?: string; input?: string } } = {};
+  const result = await runOpencodeProcess({
+    promptText: 'hello',
+    cwd: process.cwd(),
+    spawnImpl,
+    streamOutput: false,
+    formatJson: true,
+    prettyEvents: true,
+    questionPolicy: 'default-answer',
+    onTerminalState: state => {
+      terminalStateRef.value = state;
+    },
+  });
+
+  assert.deepEqual(child.killSignals, []);
+  assert.equal(result, 'tool · question {"question":"Need email?"}\ntool · question\nsent');
+  const terminalState = terminalStateRef.value;
+  assert.ok(terminalState);
+  assert.equal(terminalState.status, 'completed');
+});
+
 test('runOpencodeProcess handles error event from stderr in non-stream mode', async () => {
   const child = createMockChild(mock => {
     setImmediate(() => {

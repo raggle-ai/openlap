@@ -53,6 +53,9 @@ npm link
 # inline prompt
 openlap "Review this repository for launch readiness"
 
+# prompt selector from configured paths
+openlap prompt
+
 # prompt from file
 openlap --file ./prompt.md
 
@@ -72,6 +75,9 @@ openlap --copy
 
 # CI-safe one-shot JSON output
 openlap --no-interactive --output-format json-final --file ./prompt.md
+
+# launch directly into OpenCode TUI with combined prompt text
+openlap --launch-tui --file ./prompt.md --instruction "Prioritize risk and rollout steps"
 ```
 
 ## How It Works
@@ -104,18 +110,37 @@ await lap({
 - `--input` append extra input after your primary prompt source (interactive prompt or piped stdin)
 - `--input` interactive mode now uses an OpenTUI editor; submit with `Ctrl+D` (or `Cmd/Ctrl+Enter`), cancel with `Esc`
 - `--output-format <pretty|raw|json-events|json-final|jsonl>` set output shape
+- `--launch-tui` launch OpenCode TUI directly via `opencode --prompt` with your fully combined prompt
 - `--show-tool-output` print tool output lines
 - `--print-logs --log-level <DEBUG|INFO|WARN|ERROR>` include OpenCode logs
+- `--status-json` emit one machine-readable run-end status JSON object to stderr
+- `--question-policy <fail-fast|default-answer|abort>` control behavior when a run calls a question tool in non-interactive mode
+- `--question-default-answer <text>` default answer text used with `--question-policy default-answer`
 - `--thinking-models <csv>` and `--thinking-color <yellow|cyan|magenta|blue|gray>` style thinking output
 - `--completions <bash|zsh|fish>` print shell completion script
 - `--doctor` run environment diagnostics
 
 Use `openlap --help` for the full option list.
 
+CI example using `--status-json`:
+
+```bash
+if ! openlap --no-interactive --status-json --output-format json-final --file ./prompt.md 2>status.log >result.json; then
+  exit 1
+fi
+
+status=$(jq -r 'select(.type=="openlap.run.terminal_state") | .status' status.log | tail -n 1)
+if [ "$status" != "completed" ]; then
+  echo "openlap run ended with status: $status" >&2
+  exit 1
+fi
+```
+
 ## Configuration
 
 Set defaults in either:
 
+- `openlap.json`
 - `.openlap.json`
 - `package.json` under `openlap`
 
@@ -125,6 +150,17 @@ Supported keys:
 - `thinking-models`
 - `thinking-color`
 - `no-interactive`
+- `prompt-search-paths` (string or array of paths/aliases to markdown prompt files)
+
+When `prompt-search-paths` is configured, run `openlap prompt` to open a prompt selector TUI and choose a markdown prompt before running.
+
+Example `openlap.json`:
+
+```json
+{
+  "prompt-search-paths": ["@prompt-templates/", "./prompts/"]
+}
+```
 
 Environment variable overrides:
 
@@ -132,6 +168,7 @@ Environment variable overrides:
 - `OPENLAP_CWD`
 - `OPENLAP_THINKING_MODELS`
 - `OPENLAP_NO_INTERACTIVE`
+- `OPENLAP_PROMPT_SEARCH_PATHS`
 
 ## Development
 
