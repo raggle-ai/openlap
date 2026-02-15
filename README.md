@@ -140,6 +140,7 @@ Useful scripts:
 - `npm run dev` run CLI from source (`tsx src/cli.ts`)
 - `npm run typecheck` run TypeScript checks only
 - `npm run web` start website dev server
+- `npm run release:patch|minor|major` bump version, tag, and push
 
 Git hooks:
 

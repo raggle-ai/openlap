@@ -56,6 +56,9 @@
     "lint": "npm run typecheck && npm run typecheck:test",
     "check:precommit": "npm run lint",
     "check:prepush": "npm test && npm run build",
+    "release:patch": "npm version patch && git push origin main --follow-tags",
+    "release:minor": "npm version minor && git push origin main --follow-tags",
+    "release:major": "npm version major && git push origin main --follow-tags",
     "prepare": "husky",
     "prepublishOnly": "npm run build"
   },

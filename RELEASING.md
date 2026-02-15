@@ -7,6 +7,16 @@
 
 ## Release steps
 
+Quick path (recommended):
+
+```bash
+npm run release:patch
+# or: npm run release:minor
+# or: npm run release:major
+```
+
+Manual path:
+
 1. Verify locally:
 
 ```bash
