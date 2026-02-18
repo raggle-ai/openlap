@@ -81,11 +81,7 @@ function sourceNameFromLabel(sourceLabel: string): string {
   return toTitleCase(normalized);
 }
 
-function extractPromptTitle(markdownText: string, sourceLabel: string): string {
-  const firstHeading = markdownText.match(/^#\s+(.+)$/m)?.[1]?.trim();
-  if (firstHeading) {
-    return stripInlineMarkdown(firstHeading);
-  }
+function extractPromptTitle(_markdownText: string, sourceLabel: string): string {
   return sourceNameFromLabel(sourceLabel);
 }
 
