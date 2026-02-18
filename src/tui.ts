@@ -10,6 +10,13 @@ export interface InteractivePromptContext {
   systemPrompts?: string[];
 }
 
+export interface PromptTemplateChoice {
+  path: string;
+  label: string;
+  title: string;
+  preview: string;
+}
+
 export async function readInteractivePromptOpenTui(promptLabel: string, context?: InteractivePromptContext): Promise<string | null> {
   const tempDir = await mkdtemp(join(tmpdir(), 'openlap-opentui-'));
   const contextPath = join(tempDir, 'context.json');
@@ -38,6 +45,47 @@ export async function readInteractivePromptOpenTui(promptLabel: string, context?
           return;
         }
         rejectPromise(new Error(`OpenTUI helper exited with code ${code ?? 'unknown'}.`));
+      });
+    });
+
+    const raw = await readFile(outputPath, 'utf8');
+    const parsed = JSON.parse(raw) as { value?: string | null };
+    const value = typeof parsed.value === 'string' ? parsed.value.trim() : '';
+    return value || null;
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+export async function readPromptSelectionOpenTui(choices: PromptTemplateChoice[]): Promise<string | null> {
+  if (choices.length === 0) {
+    return null;
+  }
+
+  const tempDir = await mkdtemp(join(tmpdir(), 'openlap-opentui-selector-'));
+  const contextPath = join(tempDir, 'context.json');
+  const outputPath = join(tempDir, 'result.json');
+  const payload = {
+    choices,
+  };
+
+  const cliPath = fileURLToPath(import.meta.url);
+  const helperPath = resolve(dirname(cliPath), './opentui-prompt-selector.js');
+  await writeFile(contextPath, JSON.stringify(payload), 'utf8');
+
+  try {
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      const child = spawn('bun', [helperPath, contextPath, outputPath], {
+        stdio: 'inherit',
+      });
+
+      child.on('error', rejectPromise);
+      child.on('close', code => {
+        if (code === 0) {
+          resolvePromise();
+          return;
+        }
+        rejectPromise(new Error(`OpenTUI prompt selector exited with code ${code ?? 'unknown'}.`));
       });
     });
 

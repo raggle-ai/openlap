@@ -69,6 +69,7 @@ process.stdin.on('end', () => {
   return dir;
 }
 
+
 test('cli prints final output for --file --no-stream', async t => {
   if (!(await hasBuiltCli())) {
     t.skip('dist/cli.js not built');
@@ -177,6 +178,19 @@ test('cli accepts piped multiline input for --file --input in non-TTY setups', a
     await rm(tmp, { recursive: true, force: true });
     await rm(mockDir, { recursive: true, force: true });
   }
+});
+
+test('cli returns a clear error for --launch-tui when not in a TTY', async t => {
+  if (!(await hasBuiltCli())) {
+    t.skip('dist/cli.js not built');
+    return;
+  }
+
+  const result = await runCli(['--launch-tui', 'hello from launch tui']);
+
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /--launch-tui/i);
+  assert.match(result.stderr, /requires a local TTY terminal/i);
 });
 
 test('cli fails fast for invalid --cwd path type', async t => {
